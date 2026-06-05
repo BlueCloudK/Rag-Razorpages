@@ -1,0 +1,68 @@
+@page
+@model PresentationLayer.Pages.Account.LoginModel
+@{
+    Layout = null;
+    ViewData["Title"] = "Login";
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Login - EduChatbot</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="auth-page">
+    <main class="auth-shell">
+        <section class="auth-brand">
+            <a class="auth-back" asp-page="/Index">Back to subjects</a>
+            <div>
+                <p class="auth-kicker">EduChatbot RAG</p>
+                <h1>Study with your indexed documents.</h1>
+                <p class="auth-copy">Sign in with a demo role to test subject access, document quota, and user-scoped chat history.</p>
+            </div>
+            <div class="auth-metrics">
+                <span><strong>3</strong> roles</span>
+                <span><strong>3</strong> plans</span>
+                <span><strong>RAG</strong> ready</span>
+            </div>
+        </section>
+
+        <section class="auth-card">
+            <div class="auth-card-head">
+                <p class="auth-kicker">Welcome back</p>
+                <h2>Login</h2>
+            </div>
+
+            <form method="post" class="auth-form">
+                <input asp-for="Input.ReturnUrl" type="hidden" />
+                <div asp-validation-summary="All" class="auth-errors"></div>
+
+                <label asp-for="Input.Email">Email</label>
+                <input asp-for="Input.Email" autocomplete="username" placeholder="student@educhatbot.local" />
+
+                <label asp-for="Input.Password">Password</label>
+                <input asp-for="Input.Password" type="password" autocomplete="current-password" placeholder="Enter password" />
+
+                <div class="auth-row">
+                    <label class="auth-check">
+                        <input asp-for="Input.RememberMe" />
+                        <span>Remember me</span>
+                    </label>
+                    <a asp-page="/Account/Register">Create student account</a>
+                </div>
+
+                <button type="submit">Login</button>
+            </form>
+
+            <div class="demo-grid">
+                <p>Demo accounts</p>
+                <code>admin@educhatbot.local / Admin@12345!</code>
+                <code>lecturer@educhatbot.local / Lecturer@12345!</code>
+                <code>student@educhatbot.local / Student@12345!</code>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

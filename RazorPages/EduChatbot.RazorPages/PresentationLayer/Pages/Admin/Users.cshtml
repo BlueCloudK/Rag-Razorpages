@@ -1,0 +1,87 @@
+@page
+@model PresentationLayer.Pages.Admin.UsersModel
+@{
+    ViewData["Title"] = "User management";
+}
+
+<h1>User management</h1>
+<p>
+    <a asp-page="/Admin/Memberships">Subject memberships</a> ·
+    <a asp-page="/Admin/Activity">Activity logs</a>
+</p>
+
+@if (TempData["SuccessMessage"] is string success)
+{
+    <div class="alert alert-success">@success</div>
+}
+@if (TempData["ErrorMessage"] is string error)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+<section class="card mb-4">
+    <div class="card-header"><strong>Create account</strong></div>
+    <div class="card-body">
+        <form method="post" asp-page-handler="Create" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Email</label>
+                <input class="form-control" name="Email" type="email" required placeholder="user@school.edu" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Full name</label>
+                <input class="form-control" name="FullName" type="text" placeholder="Full name" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Password</label>
+                <input class="form-control" name="Password" type="password" required placeholder="At least 8 chars" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Role</label>
+                <select name="Role" class="form-select">
+                    @foreach (var role in Model.Data.Roles)
+                    {
+                        <option value="@role">@role</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary w-100" type="submit">Create</button>
+            </div>
+        </form>
+        <div class="text-muted small mt-2">Plans and quota are organization-level, not per-user.</div>
+    </div>
+</section>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>Email</th>
+            <th>Name</th>
+            <th>Role</th>
+            <th>Organization role</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var user in Model.Data.Users)
+        {
+            <tr>
+                <form method="post">
+                    <input type="hidden" name="UserId" value="@user.UserId" />
+                    <td>@user.Email</td>
+                    <td>@user.FullName</td>
+                    <td>
+                        <select name="Role" class="form-select">
+                            @foreach (var role in Model.Data.Roles)
+                            {
+                                <option value="@role" selected="@(role == user.Role)">@role</option>
+                            }
+                        </select>
+                    </td>
+                    <td>@user.OrganizationRole</td>
+                    <td><button class="btn btn-primary" type="submit">Save</button></td>
+                </form>
+            </tr>
+        }
+    </tbody>
+</table>

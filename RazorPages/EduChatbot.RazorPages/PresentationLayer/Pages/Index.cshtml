@@ -1,0 +1,172 @@
+﻿@page
+@model EduChatbot.RazorPages.Pages.IndexModel
+@{
+    Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EduChatbot - Há»‡ thá»‘ng há»i Ä‘Ã¡p thÃ´ng minh</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #0f0f11; color: #e8eaed; margin: 0; min-height: 100vh; }
+        
+        /* Top Bar */
+        .topbar { padding: 16px 5%; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2a2a2e; }
+        .logo { font-size: 1.3rem; font-weight: 600; color: #e8eaed; text-decoration: none; display: flex; align-items: center; gap: 10px; }
+        .logo-icon { width: 36px; height: 36px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
+        
+        /* Hero */
+        .hero { text-align: center; padding: 60px 5% 40px; }
+        .hero h1 { font-size: 2.2rem; font-weight: 700; margin-bottom: 12px; }
+        .hero h1 span { background: linear-gradient(90deg, #667eea, #764ba2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .hero p { color: #9aa0a6; font-size: 1.05rem; max-width: 600px; margin: 0 auto 30px; line-height: 1.6; }
+        
+        /* Feature Pills */
+        .features { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 50px; padding: 0 5%; }
+        .feat-pill { background: #1a1a1e; border: 1px solid #2a2a2e; border-radius: 20px; padding: 8px 18px; font-size: 0.82rem; color: #9aa0a6; display: flex; align-items: center; gap: 7px; }
+        .feat-pill i { color: #667eea; }
+        
+        /* Cards Grid */
+        .cards-section { padding: 0 5% 60px; }
+        .cards-section h2 { font-size: 1.2rem; font-weight: 500; margin-bottom: 24px; color: #9aa0a6; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        
+        .card-nb { background: #1a1a1e; border: 1px solid #2a2a2e; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 16px; text-decoration: none; color: #e8eaed; transition: all 0.25s; cursor: pointer; }
+        .card-nb:hover { border-color: #667eea; transform: translateY(-3px); box-shadow: 0 8px 30px rgba(102,126,234,0.15); color: #e8eaed; }
+        .subject-card { position: relative; }
+        .subject-open-link { display: flex; flex-direction: column; gap: 16px; text-decoration: none; color: inherit; }
+        .subject-open-link:hover { color: inherit; }
+        .delete-subject-form { position: absolute; top: 18px; right: 18px; z-index: 2; }
+        .delete-subject-btn { width: 34px; height: 34px; border-radius: 10px; border: 1px solid #3a2b31; background: #21181b; color: #ff7b8a; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .delete-subject-btn:hover { border-color: #ff7b8a; background: rgba(255,123,138,0.12); color: #ff9aa6; }
+        .card-nb-create { border-style: dashed; align-items: center; justify-content: center; min-height: 160px; }
+        .card-nb-create:hover { background: rgba(102,126,234,0.05); }
+        
+        .card-icon { width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #667eea20, #764ba220); border: 1px solid #667eea40; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; color: #667eea; }
+        .card-title { font-size: 1.1rem; font-weight: 600; }
+        .card-meta { font-size: 0.8rem; color: #9aa0a6; display: flex; gap: 16px; }
+        .card-meta span { display: flex; align-items: center; gap: 5px; }
+        
+        .plus-icon { width: 56px; height: 56px; border-radius: 50%; background: #2a2a2e; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: #667eea; margin-bottom: 8px; }
+        
+        /* Modal */
+        .modal-content { background: #1a1a1e; color: #e8eaed; border: 1px solid #2a2a2e; border-radius: 16px; }
+        .modal-header { border-bottom: 1px solid #2a2a2e; }
+        .modal-footer { border-top: 1px solid #2a2a2e; }
+        .dark-input { background: #0f0f11; border: 1px solid #2a2a2e; color: #e8eaed; border-radius: 10px; padding: 12px 16px; }
+        .dark-input:focus { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,0.15); color: #e8eaed; background: #0f0f11; }
+        .dark-input::placeholder { color: #6f7787; opacity: 1; }
+        .modal-content .form-label { color: #c5cbd6 !important; font-weight: 600; }
+        .modal-content .btn-link.text-muted { color: #aeb4c2 !important; }
+        .modal-content .btn-link.text-muted:hover { color: #ffffff !important; }
+        .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); border: none; }
+        .btn-primary:hover { background: linear-gradient(135deg, #5a6fd6, #6a4298); }
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <a href="/" class="logo">
+        <div class="logo-icon"><i class="bi bi-mortarboard-fill"></i></div>
+        EduChatbot
+    </a>
+    <div class="d-flex gap-2"></div>
+</div>
+
+<div class="hero">
+    <h1>Há»‡ thá»‘ng há»i Ä‘Ã¡p <span>thÃ´ng minh</span></h1>
+    <p>Táº£i lÃªn tÃ i liá»‡u há»c táº­p, AI sáº½ tá»± Ä‘á»™ng phÃ¢n tÃ­ch vÃ  tráº£ lá»i cÃ¢u há»i dá»±a trÃªn ná»™i dung. Há»— trá»£ PDF, DOCX, PPTX.</p>
+</div>
+
+<div class="features">
+    <div class="feat-pill"><i class="bi bi-scissors"></i> Tá»± Ä‘á»™ng Chunk & Embed</div>
+    <div class="feat-pill"><i class="bi bi-folder2-open"></i> Quáº£n lÃ½ theo mÃ´n há»c</div>
+    <div class="feat-pill"><i class="bi bi-list-check"></i> Xem tÃ i liá»‡u Ä‘Ã£ index</div>
+    <div class="feat-pill"><i class="bi bi-chat-dots"></i> Chat ngá»¯ cáº£nh tá»± nhiÃªn</div>
+    <div class="feat-pill"><i class="bi bi-quote"></i> TrÃ­ch dáº«n nguá»“n gá»‘c</div>
+    <div class="feat-pill"><i class="bi bi-shield-lock"></i> Giá»›i háº¡n pháº¡m vi tÃ i liá»‡u</div>
+    <div class="feat-pill"><i class="bi bi-clock-history"></i> Lá»‹ch sá»­ há»™i thoáº¡i</div>
+</div>
+
+<div class="cards-section">
+    <h2><i class="bi bi-journal-bookmark me-2"></i>MÃ´n há»c cá»§a tÃ´i</h2>
+    <div class="grid">
+        @if (User.IsInRole("Admin"))
+        {
+        <div class="card-nb card-nb-create" data-bs-toggle="modal" data-bs-target="#createModal">
+            <div class="plus-icon"><i class="bi bi-plus-lg"></i></div>
+            <div style="font-weight: 500;">Táº¡o mÃ´n há»c má»›i</div>
+            <div style="font-size: 0.8rem; color: #9aa0a6;">Báº¯t Ä‘áº§u báº±ng cÃ¡ch thÃªm mÃ´n há»c vÃ  táº£i tÃ i liá»‡u lÃªn</div>
+        </div>
+        }
+
+        @foreach (var subject in Model.Subjects.OrderByDescending(s => s.Id))
+        {
+            var docCount = subject.Documents?.Count() ?? 0;
+            var indexedCount = subject.Documents?.Count(d => d.IsIndexed) ?? 0;
+            var usage = Model.SubjectUsage.TryGetValue(subject.Id, out var item) ? item : null;
+            
+            <article class="card-nb subject-card">
+                @if (User.IsInRole("Admin"))
+                {
+                <form method="post" asp-page-handler="Delete" asp-route-id="@subject.Id" class="delete-subject-form" onsubmit="return confirm('XÃ³a mÃ´n há»c nÃ y sáº½ xÃ³a cáº£ tÃ i liá»‡u vÃ  lá»‹ch sá»­ chat liÃªn quan. Báº¡n cháº¯c chá»©?');">
+                    <button type="submit" class="delete-subject-btn" title="XÃ³a mÃ´n há»c" aria-label="XÃ³a mÃ´n há»c @subject.Name">
+                        <i class="bi bi-trash3"></i>
+                    </button>
+                </form>
+                }
+                <a asp-page="/Chat/Index" asp-route-subjectId="@subject.Id" class="subject-open-link">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="card-icon"><i class="bi bi-book"></i></div>
+                </div>
+                <div>
+                    <div class="card-title">@subject.Name</div>
+                    <div class="card-meta">
+                        <span><i class="bi bi-tag"></i> @subject.Code</span>
+                        <span><i class="bi bi-file-earmark"></i> @docCount tÃ i liá»‡u</span>
+                        <span><i class="bi bi-database-check"></i> @indexedCount Ä‘Ã£ index</span>
+                        <span><i class="bi bi-chat-dots"></i> @(usage?.QuestionCount ?? 0) cau hoi</span>
+                        <span><i class="bi bi-clock-history"></i> @(usage?.SessionCount ?? 0) phien</span>
+                    </div>
+                </div>
+                </a>
+            </article>
+        }
+    </div>
+</div>
+
+<div class="modal fade" id="createModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" asp-page-handler="Create" class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold"><i class="bi bi-plus-circle me-2 text-primary"></i>Táº¡o mÃ´n há»c má»›i</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-4">
+                <div class="mb-3">
+                    <label class="form-label small text-muted">TÃªn MÃ´n Há»c</label>
+                    <input type="text" asp-for="Input.Name" class="form-control dark-input" required placeholder="VD: Software Testing" autocomplete="off">
+                </div>
+                <div>
+                    <label class="form-label small text-muted">MÃ£ MÃ´n</label>
+                    <input type="text" asp-for="Input.Code" class="form-control dark-input" required placeholder="VD: SWT301" autocomplete="off">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-link text-muted text-decoration-none" data-bs-dismiss="modal">Há»§y</button>
+                <button type="submit" class="btn btn-primary rounded-pill px-4">Táº¡o má»›i</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

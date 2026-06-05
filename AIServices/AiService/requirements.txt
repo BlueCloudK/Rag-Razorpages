@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+python-multipart
+chromadb
+langchain
+langchain-text-splitters
+langchain-huggingface
+langchain-ollama
+sentence-transformers
+PyPDF2
+python-docx
+python-pptx
+jinja2
+numpy
+ragas
+requests

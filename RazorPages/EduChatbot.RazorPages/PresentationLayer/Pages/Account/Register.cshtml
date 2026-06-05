@@ -1,0 +1,48 @@
+@page
+@model PresentationLayer.Pages.Account.RegisterModel
+@{
+    Layout = null;
+    ViewData["Title"] = "Register";
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Register - EduChatbot</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="auth-page">
+    <main class="auth-shell single">
+        <section class="auth-card">
+            <div class="auth-card-head">
+                <p class="auth-kicker">Student access</p>
+                <h2>Create account</h2>
+            </div>
+
+            <form method="post" class="auth-form">
+                <div asp-validation-summary="All" class="auth-errors"></div>
+
+                <label asp-for="Input.FullName">Full name</label>
+                <input asp-for="Input.FullName" placeholder="Nguyen Van A" />
+
+                <label asp-for="Input.Email">Email</label>
+                <input asp-for="Input.Email" autocomplete="username" placeholder="student@example.com" />
+
+                <label asp-for="Input.Password">Password</label>
+                <input asp-for="Input.Password" type="password" autocomplete="new-password" placeholder="At least 8 characters" />
+
+                <label asp-for="Input.ConfirmPassword">Confirm password</label>
+                <input asp-for="Input.ConfirmPassword" type="password" autocomplete="new-password" placeholder="Repeat password" />
+
+                <button type="submit">Register</button>
+            </form>
+
+            <div class="auth-foot">
+                <a asp-page="/Account/Login">Back to login</a>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

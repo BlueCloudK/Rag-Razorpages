@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ServiceLayer\ServiceLayer.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="chroma_db\**;temp_uploads\**;wwwroot\uploads\**" />
+    <Content Remove="chroma_db\**;temp_uploads\**;wwwroot\uploads\**" />
+    <EmbeddedResource Remove="chroma_db\**;temp_uploads\**;wwwroot\uploads\**" />
+    <None Remove="chroma_db\**;temp_uploads\**;wwwroot\uploads\**" />
+  </ItemGroup>
+
+</Project>

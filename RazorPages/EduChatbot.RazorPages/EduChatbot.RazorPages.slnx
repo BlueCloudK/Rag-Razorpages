@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="DataAccessLayer/DataAccessLayer.csproj" />
+  <Project Path="PresentationLayer/PresentationLayer.csproj" />
+  <Project Path="ServiceLayer/ServiceLayer.csproj" />
+</Solution>

@@ -1,0 +1,31 @@
+@page
+@model PresentationLayer.Pages.Account.AccessDeniedModel
+@{
+    Layout = null;
+    ViewData["Title"] = "Access denied";
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Access denied - EduChatbot</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="auth-page">
+    <main class="auth-shell single">
+        <section class="auth-card">
+            <div class="auth-card-head">
+                <p class="auth-kicker">Permission required</p>
+                <h2>Access denied</h2>
+            </div>
+            <p class="auth-copy">Your account does not have permission to open this page or subject.</p>
+            <div class="auth-foot">
+                <a asp-page="/Index">Back to subjects</a>
+                <a asp-page="/Account/Login">Switch account</a>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

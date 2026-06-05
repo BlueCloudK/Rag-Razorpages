@@ -1,0 +1,52 @@
+# Visual Studio
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# .NET build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+artifacts/
+
+# Local app data
+chroma_db/
+**/wwwroot/uploads/
+**/temp_uploads/
+*.db
+*.sqlite
+*.sqlite3
+*.mdf
+*.ldf
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Logs and temp
+*.log
+logs/
+tmp/
+temp/
+
+# Secrets
+appsettings.Development.local.json
+.env
+.env.*
+!.env.example
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store

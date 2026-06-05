@@ -1,0 +1,63 @@
+@page
+@model PresentationLayer.Pages.Admin.MembershipsModel
+@{
+    ViewData["Title"] = "Subject memberships";
+}
+
+<h1>Subject memberships</h1>
+<p><a asp-page="/Admin/Users">User management</a></p>
+
+<form method="post" asp-page-handler="Add" class="row g-2 mb-4">
+    <div class="col">
+        <select name="SubjectId" class="form-select">
+            @foreach (var subject in Model.Data.Subjects)
+            {
+                <option value="@subject.Id">@subject.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col">
+        <select name="UserId" class="form-select">
+            @foreach (var user in Model.Data.Users)
+            {
+                <option value="@user.UserId">@user.Email</option>
+            }
+        </select>
+    </div>
+    <div class="col">
+        <select name="RoleInSubject" class="form-select">
+            <option value="Lecturer">Lecturer</option>
+            <option value="Student">Student</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" type="submit">Add</button>
+    </div>
+</form>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>Subject</th>
+            <th>User</th>
+            <th>Role in subject</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var membership in Model.Data.Memberships)
+        {
+            <tr>
+                <td>@membership.SubjectName</td>
+                <td>@membership.UserEmail</td>
+                <td>@membership.RoleInSubject</td>
+                <td>
+                    <form method="post" asp-page-handler="Remove">
+                        <input type="hidden" name="membershipId" value="@membership.Id" />
+                        <button class="btn btn-outline-danger" type="submit">Remove</button>
+                    </form>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
