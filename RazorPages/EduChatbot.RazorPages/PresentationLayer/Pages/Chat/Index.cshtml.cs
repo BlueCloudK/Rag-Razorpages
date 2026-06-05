@@ -24,6 +24,7 @@ public class IndexModel : PageModel
     public int ActiveSessionId { get; private set; }
     public IList<DocumentDto> Documents { get; private set; } = new List<DocumentDto>();
     public bool CanUploadDocuments { get; private set; }
+    public bool CanDeleteDocuments { get; private set; }
 
     public async Task<IActionResult> OnGetAsync(int subjectId, int? sessionId)
     {
@@ -127,6 +128,7 @@ public class IndexModel : PageModel
         ActiveSessionId = page.ActiveSessionId;
         Documents = page.CurrentDocuments;
         CanUploadDocuments = page.CanUploadDocuments;
+        CanDeleteDocuments = page.CanDeleteDocuments;
         return true;
     }
 }

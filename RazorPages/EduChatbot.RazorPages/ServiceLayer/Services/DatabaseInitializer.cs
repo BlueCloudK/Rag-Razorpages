@@ -202,6 +202,22 @@ namespace ServiceLayer.Services
                     CREATE INDEX [IX_AuditLogs_OrganizationId_CreatedAt] ON [AuditLogs] ([OrganizationId], [CreatedAt]);
                     CREATE INDEX [IX_AuditLogs_SubjectId_CreatedAt] ON [AuditLogs] ([SubjectId], [CreatedAt]);
                 END;
+
+                IF OBJECT_ID(N'[SubjectUserMemories]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [SubjectUserMemories] (
+                        [Id] int NOT NULL IDENTITY,
+                        [SubjectId] int NOT NULL,
+                        [UserId] nvarchar(450) NOT NULL,
+                        [Content] nvarchar(max) NOT NULL,
+                        [UpdatedAt] datetime2 NOT NULL CONSTRAINT [DF_SubjectUserMemories_UpdatedAt] DEFAULT SYSUTCDATETIME(),
+                        CONSTRAINT [PK_SubjectUserMemories] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_SubjectUserMemories_Subjects_SubjectId] FOREIGN KEY ([SubjectId]) REFERENCES [Subjects] ([Id]) ON DELETE CASCADE,
+                        CONSTRAINT [FK_SubjectUserMemories_AspNetUsers_UserId] FOREIGN KEY ([UserId]) REFERENCES [AspNetUsers] ([Id]) ON DELETE CASCADE
+                    );
+                    CREATE UNIQUE INDEX [IX_SubjectUserMemories_SubjectId_UserId] ON [SubjectUserMemories] ([SubjectId], [UserId]);
+                    CREATE INDEX [IX_SubjectUserMemories_UserId] ON [SubjectUserMemories] ([UserId]);
+                END;
             """);
         }
 

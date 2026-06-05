@@ -127,7 +127,9 @@ namespace ServiceLayer.Services
                 CurrentDocuments = documents.Select(d => d.ToDto(includeSubject: false)).ToList(),
                 SubjectMembers = members,
                 AvailableSubjectMembers = availableMembers,
+                CanManageSubject = await _accessControl.CanManageSubjectAsync(subjectId),
                 CanUploadDocuments = await _accessControl.CanUploadDocumentAsync(subjectId),
+                CanDeleteDocuments = await _accessControl.CanDeleteDocumentAsync(subjectId),
                 SubscriptionStatus = await _subscriptionService.GetCurrentStatusAsync()
             };
         }
@@ -186,6 +188,7 @@ namespace ServiceLayer.Services
                 .TakeLast(6)
                 .Select(m => new { role = m.Role, content = m.Content })
                 .ToList();
+            var subjectMemory = await BuildSubjectMemoryAsync(subjectId, userId, session.Id);
 
             var userMsg = new ChatMessage
             {
@@ -207,7 +210,8 @@ namespace ServiceLayer.Services
                     subject_id = subjectId,
                     query = content,
                     document_ids = indexedDocuments.Select(d => d.Id.ToString()).ToList(),
-                    history = recentHistory
+                    history = recentHistory,
+                    subject_memory = subjectMemory
                 };
                 var json = JsonSerializer.Serialize(payload);
                 using var stringContent = new StringContent(json, Encoding.UTF8, "application/json");
@@ -312,15 +316,20 @@ namespace ServiceLayer.Services
             if (string.IsNullOrEmpty(userId) || userId == _currentUser.UserId)
                 return false;
 
-            if (roleInSubject != AuthConstants.Lecturer && roleInSubject != AuthConstants.Student)
-                return false;
-
             var targetUser = await _userManager.FindByIdAsync(userId);
             if (targetUser == null)
                 return false;
 
             var targetIsAdmin = await _userManager.IsInRoleAsync(targetUser, AuthConstants.Admin);
             if (targetIsAdmin && !await _currentUser.IsInRoleAsync(AuthConstants.Admin))
+                return false;
+
+            roleInSubject = await _userManager.IsInRoleAsync(targetUser, AuthConstants.Lecturer)
+                ? AuthConstants.Lecturer
+                : await _userManager.IsInRoleAsync(targetUser, AuthConstants.Student)
+                    ? AuthConstants.Student
+                    : string.Empty;
+            if (string.IsNullOrEmpty(roleInSubject))
                 return false;
 
             var subject = await _context.Subjects.FindAsync(subjectId);
@@ -363,9 +372,13 @@ namespace ServiceLayer.Services
             if (membership.UserId == _currentUser.UserId)
                 return false;
 
+            var currentUserIsAdmin = await _currentUser.IsInRoleAsync(AuthConstants.Admin);
+            if (membership.RoleInSubject == AuthConstants.SubjectLead && !currentUserIsAdmin)
+                return false;
+
             var targetUser = await _userManager.FindByIdAsync(membership.UserId);
             var targetIsAdmin = targetUser != null && await _userManager.IsInRoleAsync(targetUser, AuthConstants.Admin);
-            if (targetIsAdmin && !await _currentUser.IsInRoleAsync(AuthConstants.Admin))
+            if (targetIsAdmin && !currentUserIsAdmin)
                 return false;
 
             _context.SubjectMemberships.Remove(membership);
@@ -450,6 +463,63 @@ namespace ServiceLayer.Services
                 .OrderByDescending(s => s.LastMessageAt ?? s.CreatedAt)
                 .ThenByDescending(s => s.CreatedAt)
                 .ToList();
+        }
+
+        private async Task<string> BuildSubjectMemoryAsync(int subjectId, string userId, int currentSessionId)
+        {
+            const int maxMessages = 12;
+            const int maxMessageLength = 600;
+            const int maxMemoryLength = 6000;
+
+            var previousMessages = await _context.ChatMessages
+                .Where(m =>
+                    m.Session != null &&
+                    m.Session.SubjectId == subjectId &&
+                    m.Session.UserId == userId &&
+                    m.SessionId != currentSessionId)
+                .OrderByDescending(m => m.Timestamp)
+                .Take(maxMessages)
+                .Select(m => new { m.Role, m.Content })
+                .ToListAsync();
+
+            previousMessages.Reverse();
+            var lines = previousMessages.Select(m =>
+            {
+                var message = m.Content.Trim().Replace("\r", " ").Replace("\n", " ");
+                if (message.Length > maxMessageLength)
+                    message = message[..maxMessageLength] + "...";
+                return $"{m.Role}: {message}";
+            });
+
+            var content = string.Join(Environment.NewLine, lines);
+            if (content.Length > maxMemoryLength)
+                content = content[^maxMemoryLength..];
+
+            var memory = await _context.SubjectUserMemories
+                .FirstOrDefaultAsync(m => m.SubjectId == subjectId && m.UserId == userId);
+
+            if (memory == null)
+            {
+                if (string.IsNullOrWhiteSpace(content))
+                    return string.Empty;
+
+                memory = new SubjectUserMemory
+                {
+                    SubjectId = subjectId,
+                    UserId = userId,
+                    Content = content,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _context.SubjectUserMemories.Add(memory);
+            }
+            else
+            {
+                memory.Content = content;
+                memory.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+            return content;
         }
 
         private static string BuildSessionTitle(string? firstUserMessage, DateTime createdAt)

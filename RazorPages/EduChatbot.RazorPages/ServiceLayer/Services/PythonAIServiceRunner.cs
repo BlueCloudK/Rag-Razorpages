@@ -201,20 +201,20 @@ namespace ServiceLayer.Services
 
         private string? ResolveAiServiceDirectory()
         {
-            var configuredPath = _configuration["AiService:Path"]
-                ?? Environment.GetEnvironmentVariable("AI_SERVICE_DIR");
-
             var candidates = new[]
             {
-                configuredPath,
                 Path.Combine(_environment.ContentRootPath, "..", "..", "..", "AIServices", "AiService"),
+                Path.Combine(_environment.ContentRootPath, "..", "AiService"),
+                Path.Combine(_environment.ContentRootPath, "..", "..", "AiService"),
                 Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "AIServices", "AiService"),
-                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "AIServices", "AiService")
+                Path.Combine(Directory.GetCurrentDirectory(), "AiService"),
+                Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "AiService"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "AIServices", "AiService"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "AiService"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "AiService")
             };
 
             return candidates
-                .OfType<string>()
-                .Where(path => !string.IsNullOrWhiteSpace(path))
                 .Select(Path.GetFullPath)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .FirstOrDefault(Directory.Exists);
@@ -304,5 +304,3 @@ namespace ServiceLayer.Services
         private static extern bool CloseHandle(IntPtr hObject);
     }
 }
-
-

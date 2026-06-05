@@ -25,6 +25,7 @@ namespace DataAccessLayer.Data
         public DbSet<BillingInvoice> BillingInvoices { get; set; }
         public DbSet<CheckoutSession> CheckoutSessions { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
+        public DbSet<SubjectUserMemory> SubjectUserMemories { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -71,6 +72,10 @@ namespace DataAccessLayer.Data
             modelBuilder.Entity<ChatSession>()
                 .HasIndex(s => new { s.SubjectId, s.UserId });
 
+            modelBuilder.Entity<SubjectUserMemory>()
+                .HasIndex(m => new { m.SubjectId, m.UserId })
+                .IsUnique();
+
             modelBuilder.Entity<Document>()
                 .HasIndex(d => d.UploadedByUserId);
 
@@ -103,6 +108,18 @@ namespace DataAccessLayer.Data
                 .WithMany()
                 .HasForeignKey(s => s.UserId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<SubjectUserMemory>()
+                .HasOne(m => m.Subject)
+                .WithMany()
+                .HasForeignKey(m => m.SubjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<SubjectUserMemory>()
+                .HasOne(m => m.User)
+                .WithMany()
+                .HasForeignKey(m => m.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<Document>()
                 .HasOne(d => d.UploadedByUser)

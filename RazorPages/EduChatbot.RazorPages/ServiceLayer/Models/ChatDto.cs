@@ -43,7 +43,9 @@ namespace ServiceLayer.Models
         public List<DocumentDto> CurrentDocuments { get; set; } = new();
         public List<SubjectMembershipAdminDto> SubjectMembers { get; set; } = new();
         public List<SubjectMemberOptionDto> AvailableSubjectMembers { get; set; } = new();
+        public bool CanManageSubject { get; set; }
         public bool CanUploadDocuments { get; set; }
+        public bool CanDeleteDocuments { get; set; }
         public SubscriptionStatusDto? SubscriptionStatus { get; set; }
     }
 

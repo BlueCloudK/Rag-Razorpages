@@ -44,7 +44,7 @@ namespace ServiceLayer.Services
             return await _context.SubjectMemberships.AnyAsync(m =>
                 m.SubjectId == subjectId &&
                 m.UserId == _currentUser.UserId &&
-                m.RoleInSubject == AuthConstants.Lecturer);
+                m.RoleInSubject == AuthConstants.SubjectLead);
         }
 
         public async Task<bool> CanUploadDocumentAsync(int subjectId)
@@ -58,7 +58,21 @@ namespace ServiceLayer.Services
             return await _context.SubjectMemberships.AnyAsync(m =>
                 m.SubjectId == subjectId &&
                 m.UserId == _currentUser.UserId &&
-                m.RoleInSubject == AuthConstants.Lecturer);
+                m.RoleInSubject == AuthConstants.SubjectLead);
+        }
+
+        public async Task<bool> CanDeleteDocumentAsync(int subjectId)
+        {
+            if (!_currentUser.IsAuthenticated || string.IsNullOrEmpty(_currentUser.UserId))
+                return false;
+
+            if (await IsAdminAsync())
+                return false;
+
+            return await _context.SubjectMemberships.AnyAsync(m =>
+                m.SubjectId == subjectId &&
+                m.UserId == _currentUser.UserId &&
+                m.RoleInSubject == AuthConstants.SubjectLead);
         }
     }
 }

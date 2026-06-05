@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
+using System.Net;
 using System.Threading.Tasks;
 using DataAccessLayer.Data;
 using DataAccessLayer.Models;
@@ -56,7 +57,15 @@ namespace ServiceLayer.Services
                 .Include(d => d.Subject)
                 .OrderByDescending(d => d.UploadedAt)
                 .ToListAsync();
-            return documents.Select(d => d.ToDto()).ToList();
+            var result = new List<DocumentDto>();
+            foreach (var document in documents)
+            {
+                var dto = document.ToDto();
+                dto.CanDelete = await _accessControl.CanDeleteDocumentAsync(document.SubjectId);
+                result.Add(dto);
+            }
+
+            return result;
         }
 
         public async Task<DocumentDto?> GetByIdAsync(int id)
@@ -68,7 +77,9 @@ namespace ServiceLayer.Services
             if (document == null || !await _accessControl.CanViewSubjectAsync(document.SubjectId))
                 return null;
 
-            return document?.ToDto();
+            var dto = document.ToDto();
+            dto.CanDelete = await _accessControl.CanDeleteDocumentAsync(document.SubjectId);
+            return dto;
         }
 
         public async Task<DocumentChunkInspectorDto?> GetChunkInspectorAsync(int id, int offset = 0, int limit = 8)
@@ -80,21 +91,49 @@ namespace ServiceLayer.Services
             try
             {
                 using var client = _httpClientFactory.CreateClient("AiService");
-                using var response = await client.GetAsync($"/api/documents/{document.Id}/chunks?offset={Math.Max(offset, 0)}&limit={Math.Clamp(limit, 1, 20)}");
-                if (!response.IsSuccessStatusCode)
-                    return null;
+                var inspector = await ReadChunkInspectorAsync(client, document.Id.ToString(), offset, limit);
+                if (inspector is { Total: > 0 })
+                    return inspector;
 
-                var json = await response.Content.ReadAsStringAsync();
-                return JsonSerializer.Deserialize<DocumentChunkInspectorDto>(json, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true,
-                    PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-                });
+                var fileNameInspector = await ReadChunkInspectorAsync(client, document.FileName, offset, limit);
+                if (fileNameInspector is { Total: > 0 })
+                    return fileNameInspector;
+
+                return await ReadSubjectChunkInspectorAsync(client, document.SubjectId, offset, limit) ?? fileNameInspector ?? inspector;
             }
             catch
             {
                 return null;
             }
+        }
+
+        private static async Task<DocumentChunkInspectorDto?> ReadChunkInspectorAsync(HttpClient client, string documentId, int offset, int limit)
+        {
+            var safeDocumentId = WebUtility.UrlEncode(documentId);
+            using var response = await client.GetAsync($"/api/documents/{safeDocumentId}/chunks?offset={Math.Max(offset, 0)}&limit={Math.Clamp(limit, 1, 20)}");
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            var json = await response.Content.ReadAsStringAsync();
+            return JsonSerializer.Deserialize<DocumentChunkInspectorDto>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+            });
+        }
+
+        private static async Task<DocumentChunkInspectorDto?> ReadSubjectChunkInspectorAsync(HttpClient client, int subjectId, int offset, int limit)
+        {
+            using var response = await client.GetAsync($"/api/subjects/{subjectId}/chunks?offset={Math.Max(offset, 0)}&limit={Math.Clamp(limit, 1, 20)}");
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            var json = await response.Content.ReadAsStringAsync();
+            return JsonSerializer.Deserialize<DocumentChunkInspectorDto>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+            });
         }
 
         public async Task<DocumentUploadResult> UploadAndIndexAsync(int subjectId, IFormFile file, string? returnUrl)
@@ -224,7 +263,7 @@ namespace ServiceLayer.Services
             if (document == null)
                 return false;
 
-            if (!await _accessControl.CanUploadDocumentAsync(document.SubjectId))
+            if (!await _accessControl.CanDeleteDocumentAsync(document.SubjectId))
                 return false;
 
             string fullPath = Path.Combine(_environment.WebRootPath, document.FilePath.TrimStart('/'));

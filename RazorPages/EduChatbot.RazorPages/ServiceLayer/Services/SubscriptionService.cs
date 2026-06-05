@@ -67,14 +67,7 @@ namespace ServiceLayer.Services
 
         public async Task<bool> CanCreateSubjectAsync()
         {
-            if (await _accessControl.IsAdminAsync())
-                return true;
-
-            if (!await _currentUser.IsInRoleAsync(AuthConstants.Lecturer))
-                return false;
-
-            var status = await GetCurrentStatusAsync();
-            return status.IsUnlimited || status.SubjectsUsed < status.MaxSubjects;
+            return await _accessControl.IsAdminAsync();
         }
 
         public async Task<bool> CanUploadDocumentAsync(int subjectId, long fileSizeBytes)
@@ -153,7 +146,9 @@ namespace ServiceLayer.Services
                 return await _context.Subjects.CountAsync();
 
             return await _context.SubjectMemberships
-                .Where(m => m.UserId == userId && m.RoleInSubject == AuthConstants.Lecturer)
+                .Where(m => m.UserId == userId &&
+                    (m.RoleInSubject == AuthConstants.Lecturer ||
+                     m.RoleInSubject == AuthConstants.SubjectLead))
                 .Select(m => m.SubjectId)
                 .Distinct()
                 .CountAsync();

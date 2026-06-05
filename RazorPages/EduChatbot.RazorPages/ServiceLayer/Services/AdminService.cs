@@ -136,18 +136,56 @@ namespace ServiceLayer.Services
 
         public async Task AddMembershipAsync(AdminMembershipInput input)
         {
-            var exists = await _context.SubjectMemberships.AnyAsync(m => m.SubjectId == input.SubjectId && m.UserId == input.UserId);
-            if (exists)
+            var subject = await _context.Subjects.FindAsync(input.SubjectId);
+            var user = await _userManager.FindByIdAsync(input.UserId);
+            if (subject == null || user == null || await _userManager.IsInRoleAsync(user, AuthConstants.Admin))
                 return;
 
-            _context.SubjectMemberships.Add(new SubjectMembership
+            var isLecturer = await _userManager.IsInRoleAsync(user, AuthConstants.Lecturer);
+            var isStudent = await _userManager.IsInRoleAsync(user, AuthConstants.Student);
+            var roleInSubject = input.RoleInSubject switch
             {
-                SubjectId = input.SubjectId,
-                UserId = input.UserId,
-                RoleInSubject = input.RoleInSubject
-            });
+                AuthConstants.SubjectLead when isLecturer => AuthConstants.SubjectLead,
+                AuthConstants.Lecturer when isLecturer => AuthConstants.Lecturer,
+                AuthConstants.Student when isStudent => AuthConstants.Student,
+                _ => null
+            };
+            var belongsToOrganization = await _context.OrganizationMembers.AnyAsync(m =>
+                m.OrganizationId == subject.OrganizationId &&
+                m.UserId == input.UserId);
+            if (roleInSubject == null || !belongsToOrganization)
+                return;
+
+            if (roleInSubject == AuthConstants.SubjectLead)
+            {
+                var currentLeads = await _context.SubjectMemberships
+                    .Where(m =>
+                        m.SubjectId == input.SubjectId &&
+                        m.RoleInSubject == AuthConstants.SubjectLead &&
+                        m.UserId != input.UserId)
+                    .ToListAsync();
+                foreach (var currentLead in currentLeads)
+                    currentLead.RoleInSubject = AuthConstants.Lecturer;
+            }
+
+            var membership = await _context.SubjectMemberships.FirstOrDefaultAsync(m =>
+                m.SubjectId == input.SubjectId &&
+                m.UserId == input.UserId);
+            if (membership == null)
+            {
+                _context.SubjectMemberships.Add(new SubjectMembership
+                {
+                    SubjectId = input.SubjectId,
+                    UserId = input.UserId,
+                    RoleInSubject = roleInSubject
+                });
+            }
+            else
+            {
+                membership.RoleInSubject = roleInSubject;
+            }
             await _context.SaveChangesAsync();
-            await _auditLogService.RecordAsync("AddMember", "SubjectMembership", null, input.SubjectId, null, $"Admin added user to subject as {input.RoleInSubject}.");
+            await _auditLogService.RecordAsync("AddMember", "SubjectMembership", null, input.SubjectId, null, $"Admin added user to subject as {roleInSubject}.");
         }
 
         public async Task RemoveMembershipAsync(int membershipId)

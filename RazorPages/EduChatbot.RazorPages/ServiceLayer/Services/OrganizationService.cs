@@ -79,6 +79,7 @@ namespace ServiceLayer.Services
         {
             var org = await GetCurrentOrganizationAsync();
             var canManage = await CanManageCurrentOrganizationAsync();
+            var isAdmin = await _accessControl.IsAdminAsync();
             var subjects = await BuildSubjectQuery(org?.Id)
                 .Include(s => s.Documents)
                 .OrderBy(s => s.Name)
@@ -101,7 +102,7 @@ namespace ServiceLayer.Services
                 IndexedDocumentCount = documents.Count(d => d.IsIndexed),
                 ProcessingDocumentCount = await _context.Documents.CountAsync(d => (org == null || d.Subject!.OrganizationId == org.Id) && !d.IsIndexed && d.IndexStatus != "Failed"),
                 CanManageOrganization = canManage,
-                CanCreateSubject = canManage && await _subscriptionService.CanCreateSubjectAsync()
+                CanCreateSubject = isAdmin && await _subscriptionService.CanCreateSubjectAsync()
             };
         }
 

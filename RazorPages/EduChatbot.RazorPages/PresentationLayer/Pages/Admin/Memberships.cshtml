@@ -26,6 +26,7 @@
     </div>
     <div class="col">
         <select name="RoleInSubject" class="form-select">
+            <option value="SubjectLead">Subject lead</option>
             <option value="Lecturer">Lecturer</option>
             <option value="Student">Student</option>
         </select>
@@ -50,7 +51,7 @@
             <tr>
                 <td>@membership.SubjectName</td>
                 <td>@membership.UserEmail</td>
-                <td>@membership.RoleInSubject</td>
+                <td>@(membership.RoleInSubject == "SubjectLead" ? "Subject lead" : membership.RoleInSubject)</td>
                 <td>
                     <form method="post" asp-page-handler="Remove">
                         <input type="hidden" name="membershipId" value="@membership.Id" />

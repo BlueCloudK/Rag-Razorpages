@@ -17,6 +17,7 @@ namespace ServiceLayer.Models
         public string IndexStatus { get; set; } = string.Empty;
         public string? IndexMessage { get; set; }
         public DateTime? IndexedAt { get; set; }
+        public bool CanDelete { get; set; }
     }
 
     public class DocumentChunkInspectorDto

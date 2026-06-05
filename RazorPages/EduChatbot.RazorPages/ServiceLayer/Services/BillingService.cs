@@ -15,13 +15,20 @@ namespace ServiceLayer.Services
         private readonly IOrganizationService _organizationService;
         private readonly ISubscriptionService _subscriptionService;
         private readonly IAuditLogService _auditLogService;
+        private readonly IAccessControlService _accessControlService;
 
-        public BillingService(ApplicationDbContext context, IOrganizationService organizationService, ISubscriptionService subscriptionService, IAuditLogService auditLogService)
+        public BillingService(
+            ApplicationDbContext context,
+            IOrganizationService organizationService,
+            ISubscriptionService subscriptionService,
+            IAuditLogService auditLogService,
+            IAccessControlService accessControlService)
         {
             _context = context;
             _organizationService = organizationService;
             _subscriptionService = subscriptionService;
             _auditLogService = auditLogService;
+            _accessControlService = accessControlService;
         }
 
         public async Task<List<PricingPlanDto>> GetPricingAsync()
@@ -58,13 +65,13 @@ namespace ServiceLayer.Services
                 Subscription = await _subscriptionService.GetCurrentStatusAsync(),
                 Plans = await GetPricingAsync(),
                 Invoices = invoices,
-                CanManageBilling = await _organizationService.CanManageCurrentOrganizationAsync()
+                CanManageBilling = await _accessControlService.IsAdminAsync()
             };
         }
 
         public async Task<CheckoutSessionDto?> StartCheckoutAsync(string planName)
         {
-            if (!await _organizationService.CanManageCurrentOrganizationAsync())
+            if (!await _accessControlService.IsAdminAsync())
                 return null;
 
             var orgId = await _organizationService.GetCurrentOrganizationIdAsync();
@@ -94,6 +101,9 @@ namespace ServiceLayer.Services
 
         public async Task<CheckoutSessionDto?> GetCheckoutAsync(int id)
         {
+            if (!await _accessControlService.IsAdminAsync())
+                return null;
+
             var orgId = await _organizationService.GetCurrentOrganizationIdAsync();
             var checkout = await _context.CheckoutSessions
                 .Include(c => c.Plan)
@@ -104,7 +114,7 @@ namespace ServiceLayer.Services
 
         public async Task<bool> PayCheckoutAsync(int id)
         {
-            if (!await _organizationService.CanManageCurrentOrganizationAsync())
+            if (!await _accessControlService.IsAdminAsync())
                 return false;
 
             var orgId = await _organizationService.GetCurrentOrganizationIdAsync();
@@ -155,7 +165,7 @@ namespace ServiceLayer.Services
 
         public async Task<bool> CancelSubscriptionAsync()
         {
-            if (!await _organizationService.CanManageCurrentOrganizationAsync())
+            if (!await _accessControlService.IsAdminAsync())
                 return false;
 
             var orgId = await _organizationService.GetCurrentOrganizationIdAsync();

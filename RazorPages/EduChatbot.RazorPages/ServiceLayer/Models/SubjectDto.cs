@@ -9,6 +9,7 @@ namespace ServiceLayer.Models
         public string Code { get; set; } = string.Empty;
         public int? OrganizationId { get; set; }
         public string OrganizationName { get; set; } = string.Empty;
+        public string CurrentUserRole { get; set; } = string.Empty;
         public List<DocumentDto> Documents { get; set; } = new();
     }
 }

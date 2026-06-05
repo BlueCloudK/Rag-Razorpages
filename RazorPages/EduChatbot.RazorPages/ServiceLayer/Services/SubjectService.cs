@@ -48,10 +48,26 @@ namespace ServiceLayer.Services
                 query = query.Where(s => _context.SubjectMemberships.Any(m => m.SubjectId == s.Id && m.UserId == userId));
             }
 
-            return await query
+            var subjects = await query
                 .OrderBy(s => s.Name)
                 .Select(s => s.ToDto(includeDocuments))
                 .ToListAsync();
+
+            if (await _accessControl.IsAdminAsync())
+            {
+                foreach (var subject in subjects)
+                    subject.CurrentUserRole = AuthConstants.Admin;
+            }
+            else if (!string.IsNullOrEmpty(_currentUser.UserId))
+            {
+                var roles = await _context.SubjectMemberships
+                    .Where(m => m.UserId == _currentUser.UserId)
+                    .ToDictionaryAsync(m => m.SubjectId, m => m.RoleInSubject);
+                foreach (var subject in subjects)
+                    subject.CurrentUserRole = roles.GetValueOrDefault(subject.Id, string.Empty);
+            }
+
+            return subjects;
         }
 
         public async Task<SubjectDto?> GetByIdAsync(int id)
@@ -65,28 +81,28 @@ namespace ServiceLayer.Services
 
         public async Task CreateAsync(SubjectInput input)
         {
+            if (!await _accessControl.IsAdminAsync())
+                throw new UnauthorizedAccessException("Only Admin can create subjects.");
+
             if (!await _subscriptionService.CanCreateSubjectAsync())
                 throw new InvalidOperationException("Your subscription does not allow creating more subjects.");
+
+            var organizationId = await GetCurrentOrganizationIdAsync();
+            var normalizedCode = input.Code.Trim();
+            var codeExists = await _context.Subjects.AnyAsync(s =>
+                s.OrganizationId == organizationId &&
+                s.Code.ToLower() == normalizedCode.ToLower());
+            if (codeExists)
+                throw new InvalidOperationException($"Subject code '{normalizedCode}' already exists in this organization.");
 
             var subject = new Subject
             {
                 Name = input.Name.Trim(),
-                Code = input.Code.Trim(),
-                OrganizationId = await GetCurrentOrganizationIdAsync()
+                Code = normalizedCode,
+                OrganizationId = organizationId
             };
             _context.Subjects.Add(subject);
             await _context.SaveChangesAsync();
-
-            if (!await _accessControl.IsAdminAsync() && !string.IsNullOrEmpty(_currentUser.UserId))
-            {
-                _context.SubjectMemberships.Add(new SubjectMembership
-                {
-                    SubjectId = subject.Id,
-                    UserId = _currentUser.UserId,
-                    RoleInSubject = AuthConstants.Lecturer
-                });
-                await _context.SaveChangesAsync();
-            }
 
             await _auditLogService.RecordAsync("Create", "Subject", subject.Id, subject.Id, subject.OrganizationId, $"Created subject {subject.Name}.");
         }
@@ -100,8 +116,16 @@ namespace ServiceLayer.Services
             if (subject == null)
                 return false;
 
+            var normalizedCode = input.Code.Trim();
+            var codeExists = await _context.Subjects.AnyAsync(s =>
+                s.Id != input.Id &&
+                s.OrganizationId == subject.OrganizationId &&
+                s.Code.ToLower() == normalizedCode.ToLower());
+            if (codeExists)
+                return false;
+
             subject.Name = input.Name.Trim();
-            subject.Code = input.Code.Trim();
+            subject.Code = normalizedCode;
             await _context.SaveChangesAsync();
             await _auditLogService.RecordAsync("Update", "Subject", subject.Id, subject.Id, subject.OrganizationId, $"Updated subject {subject.Name}.");
             return true;

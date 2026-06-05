@@ -144,7 +144,9 @@ namespace ServiceLayer.Services
                 return new List<int>();
 
             return await _context.SubjectMemberships
-                .Where(m => m.UserId == userId && m.RoleInSubject == AuthConstants.Lecturer)
+                .Where(m => m.UserId == userId &&
+                    (m.RoleInSubject == AuthConstants.Lecturer ||
+                     m.RoleInSubject == AuthConstants.SubjectLead))
                 .Select(m => m.SubjectId)
                 .Distinct()
                 .ToListAsync();
