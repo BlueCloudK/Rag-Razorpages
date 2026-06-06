@@ -820,8 +820,8 @@
                     <div class="inspect-kv">
                         <span>Status</span><strong>Indexed</strong>
                         <span>Collection</span><strong>edu_documents</strong>
-                        <span>Embedding model</span><strong>intfloat/multilingual-e5-base</strong>
-                        <span>Chunk config</span><strong>size = 1000, overlap = 200</strong>
+                        <span>Embedding model</span><strong>${escapeHtml(data.embeddingModel || data.embedding_model || meta.embeddingModel || meta.embedding_model || 'Qwen/Qwen3-Embedding-0.6B')}</strong>
+                        <span>Chunk config</span><strong>size = 850, overlap = 120</strong>
                         <span>Subject scope</span><strong>subject_id = ${meta.subjectId ?? '-'}</strong>
                         <span>Document metadata</span><strong>document_id = ${escapeHtml(data.documentId || '')}</strong>
                         <span>Total chunks</span><strong>${data.total || 0}</strong>

@@ -23,6 +23,7 @@ namespace ServiceLayer.Models
     public class DocumentChunkInspectorDto
     {
         public string DocumentId { get; set; } = string.Empty;
+        public string EmbeddingModel { get; set; } = string.Empty;
         public int Total { get; set; }
         public int Offset { get; set; }
         public int Limit { get; set; }
@@ -43,6 +44,7 @@ namespace ServiceLayer.Models
         public int SubjectId { get; set; }
         public string DocumentId { get; set; } = string.Empty;
         public string DocumentName { get; set; } = string.Empty;
+        public string EmbeddingModel { get; set; } = string.Empty;
         public int ChunkIndex { get; set; }
         public int ChunkLength { get; set; }
     }

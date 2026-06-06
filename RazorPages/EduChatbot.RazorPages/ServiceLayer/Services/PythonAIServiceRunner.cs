@@ -82,6 +82,11 @@ namespace ServiceLayer.Services
             SetOptionalEnvironment(startInfo, "RAG_MAX_CONTEXT_CHARS", _configuration["AiService:RagMaxContextChars"]);
             SetOptionalEnvironment(startInfo, "RAG_ENABLE_RERANKER", _configuration["AiService:RagEnableReranker"]);
             SetOptionalEnvironment(startInfo, "RERANKER_MODEL", _configuration["AiService:RerankerModel"]);
+            SetOptionalEnvironment(startInfo, "EMBEDDING_MODEL", _configuration["AiService:EmbeddingModel"]);
+            SetOptionalEnvironment(startInfo, "EMBEDDING_DEVICE", _configuration["AiService:EmbeddingDevice"]);
+            SetOptionalEnvironment(startInfo, "EMBEDDING_BATCH_SIZE", _configuration["AiService:EmbeddingBatchSize"]);
+            SetOptionalEnvironment(startInfo, "CHUNK_SIZE", _configuration["AiService:ChunkSize"]);
+            SetOptionalEnvironment(startInfo, "CHUNK_OVERLAP", _configuration["AiService:ChunkOverlap"]);
 
             try
             {

@@ -33,6 +33,8 @@ class RagService:
         self.ollama_num_predict = int(os.getenv("OLLAMA_NUM_PREDICT", "512"))
         self.ollama_timeout = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "10"))
         self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+        self.embedding_model_name = os.getenv("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B").strip()
+        self.embedding_device = os.getenv("EMBEDDING_DEVICE", "cpu").strip()
         self.enable_reranker = os.getenv("RAG_ENABLE_RERANKER", "false").lower() == "true"
         self.reranker_model_name = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
 
@@ -72,10 +74,15 @@ class RagService:
             return {"document_id": {"$in": allowed_ids}}
         return {"subject_id": subject_id}
 
-    def get_embedding_model(self, model_name="intfloat/multilingual-e5-base"):
+    def get_embedding_model(self, model_name=None):
+        model_name = model_name or self.embedding_model_name
         if model_name not in self.embeddings:
-            print(f"Loading embedding model: {model_name}...", flush=True)
-            self.embeddings[model_name] = HuggingFaceEmbeddings(model_name=model_name)
+            print(f"Loading embedding model: {model_name} on {self.embedding_device}...", flush=True)
+            self.embeddings[model_name] = HuggingFaceEmbeddings(
+                model_name=model_name,
+                model_kwargs={"device": self.embedding_device},
+                encode_kwargs={"normalize_embeddings": True}
+            )
         return self.embeddings[model_name]
 
     def get_llm(self):
@@ -187,7 +194,8 @@ class RagService:
             "local_index": 0
         }
 
-    def embed_and_store(self, chunks, subject_id, document_name, document_id, model_name="intfloat/multilingual-e5-base"):
+    def embed_and_store(self, chunks, subject_id, document_name, document_id, model_name=None):
+        model_name = model_name or self.embedding_model_name
         embedder = self.get_embedding_model(model_name)
         document_id = str(document_id)
 
@@ -209,6 +217,7 @@ class RagService:
                 "subject_id": subject_id,
                 "document_name": document_name,
                 "document_id": document_id,
+                "embedding_model": model_name,
                 "chunk_index": i,
                 "chunk_length": len(text)
             }
@@ -223,7 +232,7 @@ class RagService:
         print(f"  Embedding {len(documents)} chunks...", flush=True)
         start = time.time()
         embeddings_list = []
-        batch_size = int(os.getenv("EMBEDDING_BATCH_SIZE", "64"))
+        batch_size = int(os.getenv("EMBEDDING_BATCH_SIZE", "16"))
         total = len(documents)
         for batch_start in range(0, total, batch_size):
             batch_end = min(batch_start + batch_size, total)
@@ -281,6 +290,7 @@ class RagService:
         rows.sort(key=lambda row: int(row["metadata"].get("chunk_index", 0)))
         return {
             "document_id": str(result_id),
+            "embedding_model": metadatas[0].get("embedding_model", self.embedding_model_name) if metadatas else self.embedding_model_name,
             "total": len(rows),
             "offset": safe_offset,
             "limit": safe_limit,
@@ -468,7 +478,7 @@ class RagService:
         ]
         if any(term in normalized for term in identity_terms):
             return {
-                "answer": f"Minh la EduChatbot AI. Phan tra loi dang dung {self.describe_llm()}; phan tim tai lieu dung embedding **intfloat/multilingual-e5-base** va retrieval local.",
+                "answer": f"Minh la EduChatbot AI. Phan tra loi dang dung {self.describe_llm()}; phan tim tai lieu dung embedding **{self.embedding_model_name}** va retrieval local.",
                 "sources": [],
                 "contexts": [],
                 "model": self._last_model_used,
@@ -702,7 +712,8 @@ class RagService:
         )
         return context, sources, chunks, round(min(confidence, 1.0), 4)
 
-    def retrieve_query_context(self, query, subject_id, model_name="intfloat/multilingual-e5-base", document_ids=None):
+    def retrieve_query_context(self, query, subject_id, model_name=None, document_ids=None):
+        model_name = model_name or self.embedding_model_name
         rows = self.get_ordered_subject_chunks(subject_id, document_ids)
         if not rows:
             return "", [], [], 0.0
@@ -806,7 +817,8 @@ Answer:
             answer = self.invoke_llm(retry_prompt).strip()
         return answer
 
-    def generate_answer(self, query, subject_id, model_name="intfloat/multilingual-e5-base", history=None, document_ids=None, subject_memory=""):
+    def generate_answer(self, query, subject_id, model_name=None, history=None, document_ids=None, subject_memory=""):
+        model_name = model_name or self.embedding_model_name
         system_answer = self.try_answer_system_or_out_of_scope_query(query)
         if system_answer:
             return system_answer

@@ -78,4 +78,4 @@ ollama pull qwen3:4b
 ollama pull gemma3:4b
 ```
 
-The shared AI service uses `qwen3:4b` as the primary local answer model, `gemma3:4b` as local fallback, `intfloat/multilingual-e5-base` for embeddings, and `BAAI/bge-reranker-v2-m3` for CPU reranking.
+The shared AI service uses `qwen3:4b` as the primary local answer model, `gemma3:4b` as local fallback, `Qwen/Qwen3-Embedding-0.6B` for embeddings, and `BAAI/bge-reranker-v2-m3` for optional CPU reranking.
