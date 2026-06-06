@@ -87,6 +87,9 @@ namespace ServiceLayer.Services
             SetOptionalEnvironment(startInfo, "EMBEDDING_BATCH_SIZE", _configuration["AiService:EmbeddingBatchSize"]);
             SetOptionalEnvironment(startInfo, "CHUNK_SIZE", _configuration["AiService:ChunkSize"]);
             SetOptionalEnvironment(startInfo, "CHUNK_OVERLAP", _configuration["AiService:ChunkOverlap"]);
+            SetOptionalEnvironment(startInfo, "RAG_ENABLE_AGENTIC", _configuration["AiService:RagEnableAgentic"]);
+            SetOptionalEnvironment(startInfo, "RAG_AGENTIC_MAX_ROUNDS", _configuration["AiService:RagAgenticMaxRounds"]);
+            SetOptionalEnvironment(startInfo, "RAG_AGENTIC_MAX_SUBQUERIES", _configuration["AiService:RagAgenticMaxSubqueries"]);
 
             try
             {

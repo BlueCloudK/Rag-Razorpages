@@ -37,6 +37,9 @@ class RagService:
         self.embedding_device = os.getenv("EMBEDDING_DEVICE", "cpu").strip()
         self.enable_reranker = os.getenv("RAG_ENABLE_RERANKER", "false").lower() == "true"
         self.reranker_model_name = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
+        self.enable_agentic_rag = os.getenv("RAG_ENABLE_AGENTIC", "true").lower() == "true"
+        self.agentic_max_rounds = max(1, min(int(os.getenv("RAG_AGENTIC_MAX_ROUNDS", "2")), 2))
+        self.agentic_max_subqueries = max(1, min(int(os.getenv("RAG_AGENTIC_MAX_SUBQUERIES", "3")), 3))
 
         prompt_path = os.path.join(os.path.dirname(__file__), "..", "prompts", "system_prompt.jinja")
         with open(prompt_path, "r", encoding="utf-8") as f:
@@ -669,6 +672,20 @@ class RagService:
         rows.sort(key=lambda row: -row["rrf_score"])
         return rows[:self.candidate_pool]
 
+    def merge_ranked_rows(self, ranked_groups):
+        merged = {}
+        for group_index, rows in enumerate(ranked_groups):
+            for rank, row in enumerate(rows):
+                item = merged.setdefault(row["id"], dict(row))
+                bonus = 1.0 / (40 + rank + group_index + 1)
+                item["rrf_score"] = max(item.get("rrf_score", 0.0), row.get("rrf_score", 0.0)) + bonus
+                item["dense_similarity"] = max(item.get("dense_similarity", 0.0), row.get("dense_similarity", 0.0))
+                item["keyword_score"] = max(item.get("keyword_score", 0.0), row.get("keyword_score", 0.0))
+                item["rerank_score"] = max(item.get("rerank_score", 0.0), row.get("rerank_score", 0.0))
+        result = list(merged.values())
+        result.sort(key=lambda row: (-row.get("rerank_score", 0.0), -row.get("rrf_score", 0.0), -row.get("dense_similarity", 0.0)))
+        return result[:self.candidate_pool]
+
     def rerank_candidates(self, query, candidates):
         if not candidates:
             return []
@@ -722,6 +739,151 @@ class RagService:
         fused = self.reciprocal_rank_fusion(dense, keyword)
         ranked = self.rerank_candidates(query, fused)
         return self.select_context(ranked)
+
+    def retrieve_ranked_rows(self, query, subject_id, rows, model_name, document_ids=None):
+        dense = self.dense_candidates(query, subject_id, model_name, document_ids)
+        keyword = self.keyword_candidates(query, rows)
+        fused = self.reciprocal_rank_fusion(dense, keyword)
+        return self.rerank_candidates(query, fused)
+
+    def plan_agentic_queries(self, query):
+        normalized = self.normalize_text(query)
+        queries = [query.strip()]
+        chapter_numbers = re.findall(r"\b(?:chapter|chuong)\s*([0-9]+)\b", normalized)
+        for number in chapter_numbers:
+            queries.append(f"chapter {number} main ideas summary")
+            queries.append(f"chuong {number} y chinh noi dung")
+
+        if any(term in normalized for term in ["compare", "so sanh", "khac nhau", "giong nhau"]):
+            parts = re.split(r"\b(?:and|va|voi|vs|versus)\b", normalized)
+            for part in parts:
+                clean = part.strip()
+                if len(clean) >= 8:
+                    queries.append(clean)
+
+        if any(term in normalized for term in ["summary", "summarize", "tom tat", "y chinh", "main idea"]):
+            queries.append(f"{query} key points")
+            queries.append(f"{query} summary outline")
+
+        deduped = []
+        seen = set()
+        for item in queries:
+            clean = re.sub(r"\s+", " ", str(item or "")).strip()
+            key = self.normalize_text(clean)
+            if clean and key not in seen:
+                seen.add(key)
+                deduped.append(clean)
+            if len(deduped) >= self.agentic_max_subqueries:
+                break
+        return deduped or [query]
+
+    def check_context_sufficiency(self, query, chunks, sources, confidence):
+        normalized = self.normalize_text(query)
+        reasons = []
+        sufficient = bool(chunks) and confidence >= 0.22
+        if not chunks:
+            reasons.append("no_chunks")
+        if confidence < 0.22:
+            reasons.append("low_confidence")
+
+        asks_comparison = any(term in normalized for term in ["compare", "so sanh", "khac nhau", "giong nhau"])
+        if asks_comparison and len(chunks) < 2:
+            sufficient = False
+            reasons.append("comparison_needs_more_evidence")
+
+        chapter_numbers = set(re.findall(r"\b(?:chapter|chuong)\s*([0-9]+)\b", normalized))
+        if len(chapter_numbers) >= 2:
+            chunk_text = self.normalize_text(" ".join(chunk.get("content", "") for chunk in chunks))
+            missing = [number for number in chapter_numbers if f"chapter {number}" not in chunk_text and f"chuong {number}" not in chunk_text]
+            if missing:
+                sufficient = False
+                reasons.append("missing_chapters:" + ",".join(missing))
+
+        return {
+            "sufficient": sufficient,
+            "reasons": reasons,
+            "confidence": confidence
+        }
+
+    def build_follow_up_queries(self, query, check_result, chunks):
+        normalized = self.normalize_text(query)
+        followups = []
+        for reason in check_result.get("reasons", []):
+            if reason.startswith("missing_chapters:"):
+                for number in reason.split(":", 1)[1].split(","):
+                    followups.append(f"chapter {number} main content key points")
+                    followups.append(f"chuong {number} noi dung chinh")
+        if not followups:
+            query_terms = " ".join(self.tokenize(query)[:8])
+            if query_terms:
+                followups.append(query_terms)
+            for chunk in chunks[:2]:
+                heading = str(chunk.get("heading") or "").strip()
+                if heading:
+                    followups.append(f"{heading} {query}")
+        if any(term in normalized for term in ["summary", "tom tat", "y chinh", "main idea"]):
+            followups.append(f"{query} table of contents chapter section")
+
+        deduped = []
+        seen = set()
+        for item in followups:
+            clean = re.sub(r"\s+", " ", str(item or "")).strip()
+            key = self.normalize_text(clean)
+            if clean and key not in seen:
+                seen.add(key)
+                deduped.append(clean)
+            if len(deduped) >= self.agentic_max_subqueries:
+                break
+        return deduped
+
+    def retrieve_query_context_agentic(self, query, subject_id, model_name=None, document_ids=None):
+        model_name = model_name or self.embedding_model_name
+        rows = self.get_ordered_subject_chunks(subject_id, document_ids)
+        if not rows:
+            return "", [], [], 0.0, {"enabled": self.enable_agentic_rag, "rounds": []}
+
+        trace = {"enabled": self.enable_agentic_rag, "rounds": []}
+        planned_queries = self.plan_agentic_queries(query)
+        ranked_groups = []
+
+        for planned_query in planned_queries:
+            ranked_groups.append(self.retrieve_ranked_rows(planned_query, subject_id, rows, model_name, document_ids))
+
+        ranked = self.merge_ranked_rows(ranked_groups)
+        context, sources, chunks, confidence = self.select_context(ranked)
+        check = self.check_context_sufficiency(query, chunks, sources, confidence)
+        trace["rounds"].append({
+            "round": 1,
+            "queries": planned_queries,
+            "sufficient": check["sufficient"],
+            "reasons": check["reasons"],
+            "confidence": confidence,
+            "chunks": len(chunks)
+        })
+
+        if self.agentic_max_rounds <= 1 or check["sufficient"]:
+            return context, sources, chunks, confidence, trace
+
+        followups = self.build_follow_up_queries(query, check, chunks)
+        if not followups:
+            return context, sources, chunks, confidence, trace
+
+        followup_groups = []
+        for followup in followups:
+            followup_groups.append(self.retrieve_ranked_rows(followup, subject_id, rows, model_name, document_ids))
+
+        ranked = self.merge_ranked_rows([ranked] + followup_groups)
+        context, sources, chunks, confidence = self.select_context(ranked)
+        check = self.check_context_sufficiency(query, chunks, sources, confidence)
+        trace["rounds"].append({
+            "round": 2,
+            "queries": followups,
+            "sufficient": check["sufficient"],
+            "reasons": check["reasons"],
+            "confidence": confidence,
+            "chunks": len(chunks)
+        })
+        return context, sources, chunks, confidence, trace
 
     def format_history(self, history, max_messages=6):
         if not history:
@@ -832,13 +994,23 @@ Answer:
             return outline_answer
 
         rewritten_query = self.rewrite_query_if_needed(query, history, subject_memory)
+        retrieval_strategy = "agentic_hybrid" if self.enable_agentic_rag else "hybrid_rerank"
+        agentic_trace = {"enabled": self.enable_agentic_rag, "rounds": []}
         try:
-            context_str, sources, chunks, confidence = self.retrieve_query_context(
-                rewritten_query,
-                subject_id,
-                model_name=model_name,
-                document_ids=document_ids
-            )
+            if self.enable_agentic_rag:
+                context_str, sources, chunks, confidence, agentic_trace = self.retrieve_query_context_agentic(
+                    rewritten_query,
+                    subject_id,
+                    model_name=model_name,
+                    document_ids=document_ids
+                )
+            else:
+                context_str, sources, chunks, confidence = self.retrieve_query_context(
+                    rewritten_query,
+                    subject_id,
+                    model_name=model_name,
+                    document_ids=document_ids
+                )
         except Exception as e:
             print(f"[RAG] retrieval failed: {e}", flush=True)
             context_str, sources, chunks, confidence = "", [], [], 0.0
@@ -849,9 +1021,10 @@ Answer:
                 "sources": [],
                 "contexts": [],
                 "model": self._last_model_used,
-                "retrieval_strategy": "hybrid_rerank",
+                "retrieval_strategy": retrieval_strategy,
                 "confidence": 0.0,
-                "fallback_used": False
+                "fallback_used": False,
+                "agentic_trace": agentic_trace
             }
 
         if confidence < 0.18:
@@ -862,7 +1035,8 @@ Answer:
                 "model": self._last_model_used,
                 "retrieval_strategy": "blocked_low_confidence",
                 "confidence": confidence,
-                "fallback_used": False
+                "fallback_used": False,
+                "agentic_trace": agentic_trace
             }
 
         fallback_used = False
@@ -889,7 +1063,8 @@ Answer:
             "sources": sources,
             "contexts": chunks,
             "model": self._last_model_used,
-            "retrieval_strategy": "hybrid_rerank",
+            "retrieval_strategy": retrieval_strategy,
             "confidence": confidence,
-            "fallback_used": fallback_used or self._last_model_used != self.get_llm_model_name()
+            "fallback_used": fallback_used or self._last_model_used != self.get_llm_model_name(),
+            "agentic_trace": agentic_trace
         }
