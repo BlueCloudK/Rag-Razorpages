@@ -39,6 +39,7 @@ env/
 logs/
 tmp/
 temp/
+**/data/benchmark_results/
 
 # Secrets
 appsettings.Development.local.json

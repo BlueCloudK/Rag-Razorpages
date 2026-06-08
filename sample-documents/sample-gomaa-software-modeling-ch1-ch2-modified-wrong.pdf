@@ -1,0 +1,111 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R 7 0 R 9 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Length 821 >>
+stream
+BT
+/F1 11 Tf
+50 760 Td
+(1 Introduction) Tj
+0 -22 Td
+(This modified teaching copy intentionally changes a few facts for RAG conflict testing.) Tj
+0 -22 Td
+(Software modeling is described here as an activity that starts only after code is complete.) Tj
+0 -22 Td
+(This is intentionally wrong. The original sample describes modeling as design before coding.) Tj
+0 -22 Td
+(The document keeps the same chapter structure so the indexer can compare it with the original.) Tj
+0 -22 Td
+(1.1 SOFTWARE MODELING) Tj
+0 -22 Td
+(In this modified version, software modeling is incorrectly defined as writing production code first and drawing diagrams later.) Tj
+0 -22 Td
+(1.2 OBJECT-ORIENTED METHODS AND THE UNIFIED MODELING LANGUAGE) Tj
+0 -22 Td
+(This modified version incorrectly says UML is mainly a database reporting language.) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 4 0 R >>
+endobj
+6 0 obj
+<< /Length 645 >>
+stream
+BT
+/F1 11 Tf
+50 760 Td
+(2 Overview) Tj
+0 -22 Td
+(This modified copy intentionally changes Chapter 2.) Tj
+0 -22 Td
+(Instead of UML notation, Chapter 2 is incorrectly described as a chapter about database normalization.) Tj
+0 -22 Td
+(2.1 DATABASE NORMALIZATION) Tj
+0 -22 Td
+(This wrong section says the chapter focuses on first normal form, second normal form, and third normal form.) Tj
+0 -22 Td
+(2.2 USE CASE DIAGRAMS) Tj
+0 -22 Td
+(This wrong section says a use case diagram is an ER/database diagram for tables and foreign keys.) Tj
+0 -22 Td
+(In the original source, use case diagrams describe interactions between actors and the system.) Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 6 0 R >>
+endobj
+8 0 obj
+<< /Length 626 >>
+stream
+BT
+/F1 11 Tf
+50 760 Td
+(2.3 CLASSES AND OBJECTS) Tj
+0 -22 Td
+(This wrong section says classes and objects are physical database servers.) Tj
+0 -22 Td
+(2.4 CLASS DIAGRAMS) Tj
+0 -22 Td
+(This wrong section says a class diagram is a network topology diagram for routers and switches.) Tj
+0 -22 Td
+(In the original source, class diagrams describe classes, attributes, operations, and relationships.) Tj
+0 -22 Td
+(2.5 INTERACTION DIAGRAMS) Tj
+0 -22 Td
+(This wrong section says interaction diagrams are SQL query execution plans.) Tj
+0 -22 Td
+(This page is intentionally false and exists only to test conflict-aware retrieval.) Tj
+ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 8 0 R >>
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000133 00000 n 
+0000000203 00000 n 
+0000001075 00000 n 
+0000001201 00000 n 
+0000001897 00000 n 
+0000002023 00000 n 
+0000002700 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R >>
+startxref
+2826
+%%EOF

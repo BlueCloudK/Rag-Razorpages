@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using DataAccessLayer.Data;
 using DataAccessLayer.Models;
@@ -134,7 +135,7 @@ namespace ServiceLayer.Services
             };
         }
 
-        public async Task<ChatSendResult> SendMessageAsync(int subjectId, string content, int? sessionId = null)
+        public async Task<ChatSendResult> SendMessageAsync(int subjectId, string content, int? sessionId = null, CancellationToken cancellationToken = default)
         {
             if (!await _accessControl.CanViewSubjectAsync(subjectId))
             {
@@ -201,6 +202,7 @@ namespace ServiceLayer.Services
 
             string answer;
             string sourceDocs = "";
+            ChatTraceDto trace = new();
 
             try
             {
@@ -216,14 +218,15 @@ namespace ServiceLayer.Services
                 var json = JsonSerializer.Serialize(payload);
                 using var stringContent = new StringContent(json, Encoding.UTF8, "application/json");
                 using var client = _httpClientFactory.CreateClient("AiService");
-                using var response = await client.PostAsync("/api/chat/ask", stringContent);
+                using var response = await client.PostAsync("/api/chat/ask", stringContent, cancellationToken);
 
                 if (!response.IsSuccessStatusCode)
                     throw new HttpRequestException($"AI Engine returned HTTP {(int)response.StatusCode}.");
 
-                var responseString = await response.Content.ReadAsStringAsync();
+                var responseString = await response.Content.ReadAsStringAsync(cancellationToken);
                 using var jsonDoc = JsonDocument.Parse(responseString);
                 answer = jsonDoc.RootElement.GetProperty("answer").GetString() ?? "Empty response.";
+                trace = ReadTrace(jsonDoc.RootElement);
 
                 if (jsonDoc.RootElement.TryGetProperty("sources", out var sourcesEl))
                 {
@@ -232,6 +235,15 @@ namespace ServiceLayer.Services
                         .Where(s => !string.IsNullOrEmpty(s));
                     sourceDocs = string.Join(", ", sourcesList);
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                return new ChatSendResult
+                {
+                    Success = false,
+                    StatusCode = 499,
+                    Message = "Request stopped."
+                };
             }
             catch
             {
@@ -254,7 +266,7 @@ namespace ServiceLayer.Services
 
             _context.ChatMessages.Add(userMsg);
             _context.ChatMessages.Add(botMsg);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
             await _usageService.IncrementQuestionCountAsync();
             await _auditLogService.RecordAsync("AskQuestion", "ChatSession", session.Id, subjectId, null, "User asked a question in a subject chat.");
 
@@ -263,8 +275,80 @@ namespace ServiceLayer.Services
                 Success = true,
                 SessionId = session.Id,
                 User = userMsg.ToDto(),
-                Bot = botMsg.ToDto()
+                Bot = botMsg.ToDto(),
+                Trace = trace
             };
+        }
+
+        private static ChatTraceDto ReadTrace(JsonElement root)
+        {
+            var trace = new ChatTraceDto
+            {
+                Model = ReadString(root, "model"),
+                RetrievalStrategy = ReadString(root, "retrieval_strategy"),
+                Confidence = ReadDouble(root, "confidence"),
+                FallbackUsed = ReadBool(root, "fallback_used")
+            };
+
+            if (root.TryGetProperty("processing_trace", out var processingTrace))
+            {
+                trace.ProcessingTrace = processingTrace.Clone();
+            }
+
+            if (!root.TryGetProperty("contexts", out var contextsEl) || contextsEl.ValueKind != JsonValueKind.Array)
+                return trace;
+
+            foreach (var item in contextsEl.EnumerateArray().Take(8))
+            {
+                trace.Contexts.Add(new ChatContextDto
+                {
+                    Content = ReadString(item, "content"),
+                    Source = ReadString(item, "source"),
+                    Similarity = ReadDouble(item, "similarity"),
+                    ChunkIndex = ReadNullableInt(item, "chunk_index"),
+                    PageNumber = ReadNullableInt(item, "page_number"),
+                    ChapterNumber = ReadNullableInt(item, "chapter_number"),
+                    Heading = ReadString(item, "heading"),
+                    SectionPath = ReadString(item, "section_path"),
+                    SourceVariant = ReadString(item, "source_variant")
+                });
+            }
+
+            return trace;
+        }
+
+        private static string ReadString(JsonElement element, string name)
+        {
+            return element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString() ?? string.Empty
+                : string.Empty;
+        }
+
+        private static double ReadDouble(JsonElement element, string name)
+        {
+            if (!element.TryGetProperty(name, out var value))
+                return 0;
+
+            if (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number))
+                return number;
+
+            return 0;
+        }
+
+        private static bool ReadBool(JsonElement element, string name)
+        {
+            return element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
+        }
+
+        private static int? ReadNullableInt(JsonElement element, string name)
+        {
+            if (!element.TryGetProperty(name, out var value))
+                return null;
+
+            if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number))
+                return number;
+
+            return null;
         }
 
         public async Task<int?> CreateSessionAsync(int subjectId)

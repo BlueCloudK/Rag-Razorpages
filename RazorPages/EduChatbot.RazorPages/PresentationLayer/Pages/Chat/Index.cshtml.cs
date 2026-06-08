@@ -62,9 +62,9 @@ public class IndexModel : PageModel
         return new JsonResult(inspector);
     }
 
-    public async Task<IActionResult> OnPostSendMessageAsync(int subjectId, string content, int? sessionId)
+    public async Task<IActionResult> OnPostSendMessageAsync(int subjectId, string content, int? sessionId, CancellationToken cancellationToken)
     {
-        var result = await _chatService.SendMessageAsync(subjectId, content, sessionId);
+        var result = await _chatService.SendMessageAsync(subjectId, content, sessionId, cancellationToken);
         if (!result.Success)
             return new JsonResult(new { success = false, message = result.Message }) { StatusCode = result.StatusCode };
 
@@ -73,7 +73,8 @@ public class IndexModel : PageModel
             success = true,
             sessionId = result.SessionId,
             user = new { id = result.User?.Id, content = result.User?.Content },
-            bot = new { id = result.Bot?.Id, content = result.Bot?.Content, sourceDocuments = result.Bot?.SourceDocuments }
+            bot = new { id = result.Bot?.Id, content = result.Bot?.Content, sourceDocuments = result.Bot?.SourceDocuments },
+            trace = result.Trace
         });
     }
 

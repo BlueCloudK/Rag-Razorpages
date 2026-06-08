@@ -90,6 +90,12 @@ namespace ServiceLayer.Services
             SetOptionalEnvironment(startInfo, "RAG_ENABLE_AGENTIC", _configuration["AiService:RagEnableAgentic"]);
             SetOptionalEnvironment(startInfo, "RAG_AGENTIC_MAX_ROUNDS", _configuration["AiService:RagAgenticMaxRounds"]);
             SetOptionalEnvironment(startInfo, "RAG_AGENTIC_MAX_SUBQUERIES", _configuration["AiService:RagAgenticMaxSubqueries"]);
+            SetOptionalEnvironment(startInfo, "RAG_PLANNER_MODE", _configuration["AiService:RagPlannerMode"]);
+            SetOptionalEnvironment(startInfo, "RAG_PLANNER_MODEL", _configuration["AiService:RagPlannerModel"]);
+            SetOptionalEnvironment(startInfo, "RAG_CHECKER_MODEL", _configuration["AiService:RagCheckerModel"]);
+            SetOptionalEnvironment(startInfo, "RAG_PLANNER_TIMEOUT_SECONDS", _configuration["AiService:RagPlannerTimeoutSeconds"]);
+            SetOptionalEnvironment(startInfo, "RAG_PLANNER_NUM_CTX", _configuration["AiService:RagPlannerNumCtx"]);
+            SetOptionalEnvironment(startInfo, "RAG_PLANNER_NUM_PREDICT", _configuration["AiService:RagPlannerNumPredict"]);
 
             try
             {

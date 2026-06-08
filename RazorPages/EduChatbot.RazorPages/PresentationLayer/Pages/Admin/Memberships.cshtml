@@ -4,61 +4,87 @@
     ViewData["Title"] = "Subject memberships";
 }
 
-<h1>Subject memberships</h1>
-<p><a asp-page="/Admin/Users">User management</a></p>
+<section class="admin-page">
+    <div class="admin-hero">
+        <div>
+            <p class="eyebrow">Access control</p>
+            <h1>Subject memberships</h1>
+            <p>Assign subject leads, lecturers, and students without giving everyone upload permissions.</p>
+        </div>
+    </div>
 
-<form method="post" asp-page-handler="Add" class="row g-2 mb-4">
-    <div class="col">
-        <select name="SubjectId" class="form-select">
-            @foreach (var subject in Model.Data.Subjects)
-            {
-                <option value="@subject.Id">@subject.Name</option>
-            }
-        </select>
-    </div>
-    <div class="col">
-        <select name="UserId" class="form-select">
-            @foreach (var user in Model.Data.Users)
-            {
-                <option value="@user.UserId">@user.Email</option>
-            }
-        </select>
-    </div>
-    <div class="col">
-        <select name="RoleInSubject" class="form-select">
-            <option value="SubjectLead">Subject lead</option>
-            <option value="Lecturer">Lecturer</option>
-            <option value="Student">Student</option>
-        </select>
-    </div>
-    <div class="col-auto">
-        <button class="btn btn-primary" type="submit">Add</button>
-    </div>
-</form>
+    <section class="admin-panel">
+        <div class="panel-title">
+            <div>
+                <h2>Add membership</h2>
+                <p>Subject lead can upload documents; lecturer and student can access assigned subjects.</p>
+            </div>
+        </div>
+        <form method="post" asp-page-handler="Add" class="admin-form-grid membership-form">
+            <label>
+                <span>Subject</span>
+                <select name="SubjectId">
+                    @foreach (var subject in Model.Data.Subjects)
+                    {
+                        <option value="@subject.Id">@subject.Name</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>User</span>
+                <select name="UserId">
+                    @foreach (var user in Model.Data.Users)
+                    {
+                        <option value="@user.UserId">@user.Email</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>Role in subject</span>
+                <select name="RoleInSubject">
+                    <option value="SubjectLead">Subject lead</option>
+                    <option value="Lecturer">Lecturer</option>
+                    <option value="Student">Student</option>
+                </select>
+            </label>
+            <button class="primary" type="submit">Add</button>
+        </form>
+    </section>
 
-<table class="table">
-    <thead>
-        <tr>
-            <th>Subject</th>
-            <th>User</th>
-            <th>Role in subject</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach (var membership in Model.Data.Memberships)
-        {
-            <tr>
-                <td>@membership.SubjectName</td>
-                <td>@membership.UserEmail</td>
-                <td>@(membership.RoleInSubject == "SubjectLead" ? "Subject lead" : membership.RoleInSubject)</td>
-                <td>
-                    <form method="post" asp-page-handler="Remove">
-                        <input type="hidden" name="membershipId" value="@membership.Id" />
-                        <button class="btn btn-outline-danger" type="submit">Remove</button>
-                    </form>
-                </td>
-            </tr>
-        }
-    </tbody>
-</table>
+    <section class="admin-panel">
+        <div class="panel-title">
+            <div>
+                <h2>Current memberships</h2>
+                <p>@Model.Data.Memberships.Count subject access records.</p>
+            </div>
+        </div>
+        <div class="admin-table-wrap">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Subject</th>
+                        <th>User</th>
+                        <th>Role in subject</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var membership in Model.Data.Memberships)
+                    {
+                        <tr>
+                            <td><strong>@membership.SubjectName</strong></td>
+                            <td>@membership.UserEmail</td>
+                            <td><span class="role-chip">@(membership.RoleInSubject == "SubjectLead" ? "Subject lead" : membership.RoleInSubject)</span></td>
+                            <td>
+                                <form method="post" asp-page-handler="Remove">
+                                    <input type="hidden" name="membershipId" value="@membership.Id" />
+                                    <button class="danger" type="submit">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</section>

@@ -161,10 +161,24 @@ namespace ServiceLayer.Services
                 };
             }
 
+            var normalizedFileName = Path.GetFileName(file.FileName).Trim();
+            var duplicateNameExists = await _context.Documents
+                .AnyAsync(d => d.SubjectId == subjectId && d.FileName == normalizedFileName);
+            if (duplicateNameExists)
+            {
+                return new DocumentUploadResult
+                {
+                    Status = "Failed",
+                    Indexed = false,
+                    Message = "This subject already has a document with the same file name. Rename the file or delete the old one before uploading again.",
+                    ReturnUrl = returnUrl
+                };
+            }
+
             string uploadsFolder = Path.Combine(_environment.WebRootPath, "uploads");
             Directory.CreateDirectory(uploadsFolder);
 
-            string uniqueFileName = Guid.NewGuid() + "_" + file.FileName;
+            string uniqueFileName = Guid.NewGuid() + "_" + normalizedFileName;
             string filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
             using (var fileStream = new FileStream(filePath, FileMode.Create))
@@ -174,7 +188,7 @@ namespace ServiceLayer.Services
 
             var document = new Document
             {
-                FileName = file.FileName,
+                FileName = normalizedFileName,
                 FilePath = "/uploads/" + uniqueFileName,
                 SubjectId = subjectId,
                 UploadedByUserId = _currentUser.UserId,

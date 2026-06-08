@@ -9,8 +9,8 @@ import uvicorn
 import os
 import shutil
 import traceback
-from services.document_processor import DocumentProcessor
 from services.rag_service import RagService
+from services.document_processor import DocumentProcessor
 
 app = FastAPI(title="EduChatbot AI Service")
 

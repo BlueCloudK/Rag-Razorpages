@@ -63,7 +63,13 @@ Default web URL:
 http://localhost:5101
 ```
 
-The web app starts `D:\Project\PRN222\AIServices\AiService` on:
+The web app starts the shared Python AI service from this repository:
+
+```text
+D:\Project\rag-razorpages\AIServices\AiService
+```
+
+The AI service listens on:
 
 ```text
 http://127.0.0.1:8000
@@ -74,8 +80,79 @@ http://127.0.0.1:8000
 Default mode is local-only:
 
 ```powershell
-ollama pull qwen3:4b
 ollama pull gemma3:4b
+ollama pull qwen2.5:3b
+ollama pull qwen3:1.7b
 ```
 
-The shared AI service uses `qwen3:4b` as the primary local answer model, `gemma3:4b` as local fallback, `Qwen/Qwen3-Embedding-0.6B` for embeddings, and `BAAI/bge-reranker-v2-m3` for optional CPU reranking. Lightweight Agentic RAG is enabled by default with at most two retrieval rounds and three sub-queries, so it can improve context discovery without overloading a 4GB VRAM machine.
+The shared AI service uses structured chunking, `Qwen/Qwen3-Embedding-0.6B` on CUDA for embeddings, ChromaDB for vector storage, `qwen3:1.7b` as a small planner/checker with rule-based fallback, and `gemma3:4b` as the primary local answer model. `qwen2.5:3b` is kept as answer fallback. On this demo machine PyTorch CUDA sees the GTX 1650, so indexing can use the GPU. If another machine is CPU-only, switch `EmbeddingModel` back to `intfloat/multilingual-e5-base` and `EmbeddingDevice` to `cpu`. Agentic RAG is limited to two retrieval rounds and three sub-queries.
+
+Chunk metadata includes `chapter_number`, `chapter_title`, `section_number`, `section_title`, `page_number`, and `content_zone`. Chapter and outline questions use this metadata first, so the chatbot avoids using table-of-contents, appendix, references, or answer-key chunks as evidence for chapter content.
+
+ChromaDB is runtime development data; when embedding or chunking changes, stop the web app/Python service, delete `AIServices/AiService/chroma_db`, and re-index the documents.
+
+## Demo Benchmark
+
+The repo includes shortened sample PDFs in `sample-documents` for fast local testing:
+
+```text
+sample-gomaa-software-modeling-ch1-ch2.pdf
+sample-gomaa-software-modeling-ch1-ch2-modified-wrong.pdf
+sample-ddia-ch1-ch2.pdf
+```
+
+`index_demo_documents.py` also indexes two duplicate Gomaa entries for evaluation: one with a different demo name and one with the same display name but a different internal document id. This proves that duplicate handling is based on content hash and document id, not only on file name.
+
+The modified Gomaa sample intentionally contains wrong information. It demonstrates conflict-aware RAG: when the original and modified documents disagree, the chatbot groups the answer by source, cites both files, and warns that the sources conflict instead of choosing which version is correct.
+
+Index the demo documents directly into the AI service:
+
+```powershell
+cd D:\Project\rag-razorpages\AIServices\AiService
+python .\index_demo_documents.py --reset --subject-id 1007
+```
+
+Run the full demo benchmark:
+
+```powershell
+python .\run_demo_benchmark.py --subject-id 1007
+```
+
+Run selected cases quickly:
+
+```powershell
+python .\run_demo_benchmark.py --subject-id 1007 --ids ambiguous_wc_vi,conflict_gomaa_ch2_vi,duplicate_gomaa_ch2_same_content_vi
+```
+
+Benchmark cases are in `AIServices/AiService/data/demo_benchmark_cases.json`; runtime reports are written to `AIServices/AiService/data/benchmark_results/` and ignored by Git. The latest verified run passed `50/50` demo cases, including conflict handling, duplicate content grouping, same-name duplicate import handling, ambiguous acronym guards, prompt-injection refusal, wrong-source guards, and out-of-scope refusal.
+
+## RAG Capability Matrix
+
+| Capability | Current behavior |
+| --- | --- |
+| Chapter and outline questions | Uses chapter-aware metadata before normal retrieval. |
+| Follow-up questions | Rewrites short follow-ups using history and small planner/rule fallback. |
+| Citation | Returns source files plus chunk metadata for UI source grouping. |
+| Conflict awareness | Shows original/modified answers separately and warns about conflict. |
+| Duplicate awareness | Uses `content_hash` to send one representative chunk to the LLM while listing all duplicate sources. |
+| Same-name duplicate upload | Normal web upload blocks duplicate file names inside the same subject. AI import still labels same-name duplicates by document id. |
+| Safety guards | Blocks or clarifies prompt injection, vague acronyms, random input, and out-of-scope questions without fake citations. |
+
+## Information Quality Evaluation
+
+The benchmark evaluates practical demo quality rather than general intelligence:
+
+- `Source correctness`: expected file/chapter/page appears in sources or selected contexts.
+- `Evidence sufficiency`: weak evidence is blocked or clarified instead of answered confidently.
+- `Answer completeness`: summaries should contain the main ideas, not just a raw copied sentence.
+- `Conflict awareness`: different variants are separated and not silently merged.
+- `Duplicate awareness`: identical content is merged for context but kept visible in citations.
+- `Safety`: prompt injection, wrong-source questions, answer-key requests, and out-of-scope questions do not create fake sources.
+
+## Current Limitations
+
+- The `50/50` score is scoped to the curated demo set.
+- Local generation can be slow on small hardware.
+- OCR/scanned PDFs can still hurt chunk quality.
+- Conflict handling does not decide the official source yet; add trusted metadata if that becomes a requirement.
+- Duplicate detection is exact normalized chunk hashing, not semantic near-duplicate detection.

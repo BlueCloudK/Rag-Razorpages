@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 
 namespace ServiceLayer.Models
 {
@@ -63,5 +64,29 @@ namespace ServiceLayer.Models
         public int SessionId { get; set; }
         public ChatMessageDto? User { get; set; }
         public ChatMessageDto? Bot { get; set; }
+        public ChatTraceDto? Trace { get; set; }
+    }
+
+    public class ChatTraceDto
+    {
+        public string Model { get; set; } = string.Empty;
+        public string RetrievalStrategy { get; set; } = string.Empty;
+        public double Confidence { get; set; }
+        public bool FallbackUsed { get; set; }
+        public List<ChatContextDto> Contexts { get; set; } = new();
+        public JsonElement? ProcessingTrace { get; set; }
+    }
+
+    public class ChatContextDto
+    {
+        public string Content { get; set; } = string.Empty;
+        public string Source { get; set; } = string.Empty;
+        public double Similarity { get; set; }
+        public int? ChunkIndex { get; set; }
+        public int? PageNumber { get; set; }
+        public int? ChapterNumber { get; set; }
+        public string Heading { get; set; } = string.Empty;
+        public string SectionPath { get; set; } = string.Empty;
+        public string SourceVariant { get; set; } = string.Empty;
     }
 }

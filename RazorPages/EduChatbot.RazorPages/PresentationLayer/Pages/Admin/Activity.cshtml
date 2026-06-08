@@ -4,72 +4,80 @@
     ViewData["Title"] = "Activity audit";
 }
 
-<div class="d-flex justify-content-between align-items-start gap-3 mb-4">
-    <div>
-        <h1 class="h3 mb-1">Activity audit</h1>
-        <p class="text-muted mb-0">Privacy-safe logs for login, account changes, subject access, upload/index/delete document, and chat usage. Question text, AI answers, and document content are not stored here.</p>
+<section class="admin-page">
+    <div class="admin-hero">
+        <div>
+            <p class="eyebrow">Operations</p>
+            <h1>Activity audit</h1>
+            <p>Privacy-safe logs for login, account changes, subject access, document operations, and chat usage. Question text, AI answers, and document content are not stored here.</p>
+        </div>
     </div>
-    <a class="btn btn-outline-primary" asp-page="/Admin/Users">Users</a>
-</div>
 
-<section class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <strong>Subject chat usage</strong>
-        <span class="badge text-bg-primary">@Model.Data.SubjectUsage.Sum(s => s.QuestionCount) questions</span>
-    </div>
-    <div class="table-responsive">
-        <table class="table table-hover mb-0">
-            <thead>
-                <tr>
-                    <th>Subject</th>
-                    <th>Questions</th>
-                    <th>Sessions</th>
-                    <th>Last activity</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var subject in Model.Data.SubjectUsage)
-                {
+    <section class="admin-panel">
+        <div class="panel-title">
+            <div>
+                <h2>Subject chat usage</h2>
+                <p>Lecturers can use this view to understand activity without reading private conversations.</p>
+            </div>
+            <span class="metric-badge">@Model.Data.SubjectUsage.Sum(s => s.QuestionCount) questions</span>
+        </div>
+        <div class="admin-table-wrap">
+            <table class="admin-table">
+                <thead>
                     <tr>
-                        <td><strong>@subject.SubjectName</strong><br /><span class="text-muted">@subject.SubjectCode</span></td>
-                        <td>@subject.QuestionCount</td>
-                        <td>@subject.SessionCount</td>
-                        <td>@(subject.LastAskedAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "No chat yet")</td>
+                        <th>Subject</th>
+                        <th>Questions</th>
+                        <th>Sessions</th>
+                        <th>Last activity</th>
                     </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-</section>
+                </thead>
+                <tbody>
+                    @foreach (var subject in Model.Data.SubjectUsage)
+                    {
+                        <tr>
+                            <td><strong>@subject.SubjectName</strong><br /><span class="muted">@subject.SubjectCode</span></td>
+                            <td>@subject.QuestionCount</td>
+                            <td>@subject.SessionCount</td>
+                            <td>@(subject.LastAskedAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "No chat yet")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
 
-<section class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <strong>Recent operational logs</strong>
-        <span class="badge text-bg-success">privacy-safe</span>
-    </div>
-    <div class="table-responsive">
-        <table class="table table-hover mb-0">
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>Actor</th>
-                    <th>Action</th>
-                    <th>Target</th>
-                    <th>Summary</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var log in Model.Data.RecentLogs)
-                {
+    <section class="admin-panel">
+        <div class="panel-title">
+            <div>
+                <h2>Recent operational logs</h2>
+                <p>System actions only, with no document body or chat message content.</p>
+            </div>
+            <span class="metric-badge safe">privacy-safe</span>
+        </div>
+        <div class="admin-table-wrap">
+            <table class="admin-table">
+                <thead>
                     <tr>
-                        <td>@log.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
-                        <td><strong>@log.ActorEmail</strong><br /><span class="text-muted">@log.ActorRole</span></td>
-                        <td>@log.Action</td>
-                        <td>@log.EntityType @(log.EntityId.HasValue ? $"#{log.EntityId}" : "")</td>
-                        <td>@log.Summary</td>
+                        <th>Time</th>
+                        <th>Actor</th>
+                        <th>Action</th>
+                        <th>Target</th>
+                        <th>Summary</th>
                     </tr>
-                }
-            </tbody>
-        </table>
-    </div>
+                </thead>
+                <tbody>
+                    @foreach (var log in Model.Data.RecentLogs)
+                    {
+                        <tr>
+                            <td>@log.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                            <td><strong>@log.ActorEmail</strong><br /><span class="muted">@log.ActorRole</span></td>
+                            <td>@log.Action</td>
+                            <td>@log.EntityType @(log.EntityId.HasValue ? $"#{log.EntityId}" : "")</td>
+                            <td>@log.Summary</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
 </section>

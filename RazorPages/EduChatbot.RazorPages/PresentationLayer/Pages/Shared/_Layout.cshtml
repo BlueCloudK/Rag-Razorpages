@@ -1,54 +1,123 @@
+@{
+    var currentPath = Context.Request.Path;
+    var isAdminSection = currentPath.StartsWithSegments("/Admin");
+    string AdminActiveClass(string page) => currentPath.StartsWithSegments(page) ? "active" : "";
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - EduChatbot.RazorPages</title>
+    <meta name="description" content="EduChatbot RAG academic workspace for indexed documents, subject access, and AI-assisted study." />
+    <title>@ViewData["Title"] - EduChatbot</title>
     <script type="importmap"></script>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/EduChatbot.RazorPages.styles.css" asp-append-version="true" />
 </head>
-<body>
-    <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
-            <div class="container">
-                <a class="navbar-brand" asp-area="" asp-page="/Index">EduChatbot.RazorPages</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                        aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
-                    <ul class="navbar-nav flex-grow-1">
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-page="/Index">Home</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-page="/Privacy">Privacy</a>
-                        </li>
-                        @if (User.IsInRole("Admin"))
-                        {
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-page="/Admin/Users">Admin</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-page="/Admin/Activity">Logs</a>
-                            </li>
-                        }
-                    </ul>
-                </div>
+<body class="app-body @(isAdminSection ? "admin-mode" : "")">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    @if (isAdminSection)
+    {
+        <header class="admin-topbar">
+            <a class="app-brand" asp-area="" asp-page="/Index">
+                <span class="brand-mark">E</span>
+                <span>EduChatbot</span>
+            </a>
+            <div class="admin-top-actions">
+                <span class="admin-profile"><strong>@User.Identity?.Name</strong><span>Admin</span></span>
+                <a class="secondary" asp-page="/Index">Workspace</a>
+                <form method="post" asp-page="/Account/Logout" class="nav-form">
+                    <button type="submit" class="danger">Logout</button>
+                </form>
             </div>
-        </nav>
-    </header>
-    <div class="container">
-        <main role="main" class="pb-3">
-            @RenderBody()
-        </main>
-    </div>
+        </header>
+    }
+    else
+    {
+        <header class="app-header">
+            <nav class="navbar navbar-expand-md app-nav">
+                <div class="container-fluid app-nav-inner">
+                    <a class="app-brand" asp-area="" asp-page="/Index">
+                        <span class="brand-mark">E</span>
+                        <span>EduChatbot</span>
+                    </a>
+                    <button class="navbar-toggler app-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appNavigation" aria-controls="appNavigation" aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+                    <div id="appNavigation" class="navbar-collapse collapse">
+                        <ul class="navbar-nav app-links ms-auto">
+                            <li class="nav-item">
+                                <a class="nav-link" asp-area="" asp-page="/Index">Dashboard</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" asp-area="" asp-page="/Subjects/Index">Subjects</a>
+                            </li>
+                            @if (User.IsInRole("Admin"))
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link" asp-area="" asp-page="/Admin/Users">Admin</a>
+                                </li>
+                            }
+                            <li class="nav-item">
+                                <a class="nav-link" asp-area="" asp-page="/Privacy">Privacy</a>
+                            </li>
+                            @if (User.Identity?.IsAuthenticated == true)
+                            {
+                                <li class="nav-item">
+                                    <form method="post" asp-page="/Account/Logout" class="nav-form">
+                                        <button type="submit" class="nav-link logout-link">Logout</button>
+                                    </form>
+                                </li>
+                            }
+                            else
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link nav-cta" asp-area="" asp-page="/Account/Login">Login</a>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+            </nav>
+        </header>
+    }
 
-    <footer class="border-top footer text-muted">
-        <div class="container">
-            &copy; 2026 - EduChatbot.RazorPages - <a asp-area="" asp-page="/Privacy">Privacy</a>
+    @if (isAdminSection)
+    {
+        <div class="admin-console-shell">
+            <aside class="admin-sidebar" aria-label="Admin navigation">
+                <div class="sidebar-kicker">Admin console</div>
+                <nav class="sidebar-nav">
+                    <a class="sidebar-link @AdminActiveClass("/Admin/Users")" asp-page="/Admin/Users">Users</a>
+                    <a class="sidebar-link @AdminActiveClass("/Admin/Memberships")" asp-page="/Admin/Memberships">Subject access</a>
+                    <a class="sidebar-link @AdminActiveClass("/Admin/Activity")" asp-page="/Admin/Activity">Activity logs</a>
+                </nav>
+                <div class="sidebar-note">
+                    <strong>Role separation</strong>
+                    <span>Admin manages accounts and access. Subject leads own document upload and indexing.</span>
+                </div>
+            </aside>
+            <div class="admin-content-shell">
+                <main id="main-content" role="main">
+                    @RenderBody()
+                </main>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="app-shell">
+            <main id="main-content" role="main">
+                @RenderBody()
+            </main>
+        </div>
+    }
+
+    <footer class="app-footer">
+        <div class="app-footer-inner">
+            <span>&copy; 2026 EduChatbot</span>
+            <a asp-area="" asp-page="/Privacy">Privacy</a>
         </div>
     </footer>
 

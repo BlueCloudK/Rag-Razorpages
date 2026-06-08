@@ -1,9 +1,19 @@
 @page
 @model PrivacyModel
 @{
-    ViewData["Title"] = "Privacy Policy";
+    ViewData["Title"] = "Privacy";
 }
-<h1>@ViewData["Title"]</h1>
 
-<p>Use this page to detail your site's privacy policy.</p>
-
+<section class="admin-page narrow-page">
+    <div class="admin-hero">
+        <div>
+            <p class="eyebrow">Privacy</p>
+            <h1>Privacy and data handling</h1>
+            <p>EduChatbot stores account access, document metadata, chat sessions, and operational audit events for the academic workspace.</p>
+        </div>
+    </div>
+    <section class="admin-panel">
+        <h2>What is logged</h2>
+        <p class="muted">Audit logs record actions such as login, upload, indexing, membership changes, and chat usage counts. They do not store private question text, AI answers, or document body content.</p>
+    </section>
+</section>
