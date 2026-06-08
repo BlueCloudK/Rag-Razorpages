@@ -856,28 +856,51 @@ class RagService:
             if len(term) >= 3 and term not in stopwords
         ]
 
+    def rows_from_chroma_result(self, result):
+        rows = []
+        ids = result.get("ids", [])
+        for i, (doc, meta) in enumerate(zip(result.get("documents", []), result.get("metadatas", []))):
+            rows.append({
+                "id": ids[i] if i < len(ids) else f"{meta.get('document_id', 'unknown')}_{i}",
+                "content": doc,
+                "metadata": meta,
+                "dense_similarity": 0.0,
+                "keyword_score": 0.0,
+                "rrf_score": 0.0,
+                "rerank_score": 0.0
+            })
+        return sorted(rows, key=lambda row: (
+            str(row["metadata"].get("document_id", "")),
+            int(row["metadata"].get("chunk_index", 0))
+        ))
+
+    def document_filter_matches_rows(self, rows, document_ids=None):
+        allowed = set(self.normalize_document_ids(document_ids))
+        if not allowed:
+            return True
+        return any(str(row.get("metadata", {}).get("document_id", "")).strip() in allowed for row in rows)
+
     def get_ordered_subject_chunks(self, subject_id, document_ids=None):
         try:
             result = self.collection.get(
                 where=self.build_scope_filter(subject_id, document_ids),
                 include=["documents", "metadatas"]
             )
-            rows = []
-            ids = result.get("ids", [])
-            for i, (doc, meta) in enumerate(zip(result.get("documents", []), result.get("metadatas", []))):
-                rows.append({
-                    "id": ids[i] if i < len(ids) else f"{meta.get('document_id', 'unknown')}_{i}",
-                    "content": doc,
-                    "metadata": meta,
-                    "dense_similarity": 0.0,
-                    "keyword_score": 0.0,
-                    "rrf_score": 0.0,
-                    "rerank_score": 0.0
-                })
-            return sorted(rows, key=lambda row: (
-                str(row["metadata"].get("document_id", "")),
-                int(row["metadata"].get("chunk_index", 0))
-            ))
+            rows = self.rows_from_chroma_result(result)
+            if rows or not self.normalize_document_ids(document_ids):
+                return rows
+
+            fallback = self.collection.get(
+                where={"subject_id": subject_id},
+                include=["documents", "metadatas"]
+            )
+            fallback_rows = self.rows_from_chroma_result(fallback)
+            if fallback_rows:
+                print(
+                    f"[RAG] document_id filter {self.normalize_document_ids(document_ids)} had no Chroma matches; falling back to subject_id={subject_id}.",
+                    flush=True
+                )
+            return fallback_rows
         except Exception as e:
             print(f"Error reading ChromaDB rows: {e}", flush=True)
             return []
@@ -2025,6 +2048,8 @@ Answer:
         if not rows:
             return "", [], [], 0.0
         effective_document_ids = document_ids
+        if effective_document_ids and not self.document_filter_matches_rows(original_rows, effective_document_ids):
+            effective_document_ids = None
         if not effective_document_ids and len(rows) < len(original_rows):
             effective_document_ids = self.document_ids_from_rows(rows)
         dense = self.dense_candidates(query, subject_id, model_name, effective_document_ids)
@@ -2307,6 +2332,8 @@ JSON schema:
         if not rows:
             return "", [], [], 0.0, {"enabled": self.enable_agentic_rag, "rounds": []}
         effective_document_ids = document_ids
+        if effective_document_ids and not self.document_filter_matches_rows(original_rows, effective_document_ids):
+            effective_document_ids = None
         if not effective_document_ids and len(rows) < len(original_rows):
             effective_document_ids = self.document_ids_from_rows(rows)
 
