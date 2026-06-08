@@ -15,19 +15,22 @@ namespace ServiceLayer.Services
         private readonly ICurrentUserService _currentUser;
         private readonly ISubscriptionService _subscriptionService;
         private readonly IAuditLogService _auditLogService;
+        private readonly IRealtimeNotificationService _realtime;
 
         public SubjectService(
             ApplicationDbContext context,
             IAccessControlService accessControl,
             ICurrentUserService currentUser,
             ISubscriptionService subscriptionService,
-            IAuditLogService auditLogService)
+            IAuditLogService auditLogService,
+            IRealtimeNotificationService realtime)
         {
             _context = context;
             _accessControl = accessControl;
             _currentUser = currentUser;
             _subscriptionService = subscriptionService;
             _auditLogService = auditLogService;
+            _realtime = realtime;
         }
 
         public async Task<List<SubjectDto>> GetAllAsync(bool includeDocuments = false)
@@ -105,6 +108,7 @@ namespace ServiceLayer.Services
             await _context.SaveChangesAsync();
 
             await _auditLogService.RecordAsync("Create", "Subject", subject.Id, subject.Id, subject.OrganizationId, $"Created subject {subject.Name}.");
+            await _realtime.SubjectChangedAsync("created", subject.Id, subject.Name);
         }
 
         public async Task<bool> UpdateAsync(SubjectInput input)
@@ -128,6 +132,7 @@ namespace ServiceLayer.Services
             subject.Code = normalizedCode;
             await _context.SaveChangesAsync();
             await _auditLogService.RecordAsync("Update", "Subject", subject.Id, subject.Id, subject.OrganizationId, $"Updated subject {subject.Name}.");
+            await _realtime.SubjectChangedAsync("updated", subject.Id, subject.Name);
             return true;
         }
 
@@ -145,6 +150,8 @@ namespace ServiceLayer.Services
             if (subject == null)
                 return false;
 
+            var subjectName = subject.Name;
+            var organizationId = subject.OrganizationId;
             var memberships = await _context.SubjectMemberships
                 .Where(m => m.SubjectId == id)
                 .ToListAsync();
@@ -167,7 +174,8 @@ namespace ServiceLayer.Services
 
             _context.Subjects.Remove(subject);
             await _context.SaveChangesAsync();
-            await _auditLogService.RecordAsync("Delete", "Subject", id, id, subject.OrganizationId, $"Deleted subject {subject.Name}.");
+            await _auditLogService.RecordAsync("Delete", "Subject", id, id, organizationId, $"Deleted subject {subjectName}.");
+            await _realtime.SubjectChangedAsync("deleted", id, subjectName);
             return true;
         }
 

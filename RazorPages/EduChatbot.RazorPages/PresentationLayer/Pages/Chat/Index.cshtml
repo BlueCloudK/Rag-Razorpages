@@ -158,6 +158,9 @@
         .evidence-item { border: 1px solid #2a2a2e; border-radius: 8px; padding: 7px; background: #101116; }
         .evidence-item strong { color: #dce2f4; font-size: .68rem; display: block; margin-bottom: 3px; }
         .evidence-item span { color: #9aa0a6; font-size: .66rem; line-height: 1.35; display: block; }
+        .realtime-toast { position: fixed; right: 18px; bottom: 18px; z-index: 70; max-width: 360px; border: 1px solid #2c3d61; border-radius: 10px; background: #171b28; color: #e8ebf4; box-shadow: 0 18px 55px rgba(0,0,0,.38); padding: 12px 14px; display: none; align-items: flex-start; gap: 10px; font-size: .78rem; line-height: 1.45; }
+        .realtime-toast.show { display: flex; }
+        .realtime-toast i { color: #85d59d; margin-top: 1px; }
         
         .chat-topbar { padding: 12px 24px; border-bottom: 1px solid #1e1e22; display: flex; justify-content: space-between; align-items: center; }
         .chat-topbar-title { font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
@@ -321,7 +324,7 @@
                                 : ext == ".docx" ? "bi-filetype-docx src-icon-doc"
                                 : "bi-filetype-pptx src-icon-ppt";
 
-                            <div class="src-card">
+                            <div class="src-card" data-document-card="@doc.Id">
                                 <i class="bi @iconClass src-icon"></i>
                                 <div class="flex-grow-1 overflow-hidden">
                                     <div class="src-name" title="@doc.FileName">@doc.FileName</div>
@@ -604,6 +607,11 @@
     }
 </div>
 
+<div class="realtime-toast" id="realtimeToast" role="status" aria-live="polite">
+    <i class="bi bi-broadcast-pin"></i>
+    <span id="realtimeToastText">Workspace updated.</span>
+</div>
+
 <div class="inspect-modal" id="chunkInspector" aria-hidden="true">
     <div class="inspect-dialog">
         <div class="inspect-head">
@@ -621,10 +629,12 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
 <script>
     window.onload = function() {
         renderExistingBotMessages();
         checkAiStatus();
+        setupWorkspaceRealtime();
         var box = document.getElementById("chatBox");
         if (box) {
             box.style.scrollBehavior = 'auto';
@@ -658,6 +668,9 @@
     let aiReady = false;
     let activeChatController = null;
     let circuitTimers = [];
+    const currentSubjectId = @subjectId;
+    let realtimeRefreshTimer = null;
+    let realtimeToastTimer = null;
 
     function escapeHtml(value) {
         return String(value || '')
@@ -666,6 +679,64 @@
             .replaceAll('>', '&gt;')
             .replaceAll('"', '&quot;')
             .replaceAll("'", '&#039;');
+    }
+
+    function showRealtimeToast(message) {
+        const toast = document.getElementById('realtimeToast');
+        const toastText = document.getElementById('realtimeToastText');
+        if (!toast || !toastText) return;
+        toastText.textContent = message;
+        toast.classList.add('show');
+        window.clearTimeout(realtimeToastTimer);
+        realtimeToastTimer = window.setTimeout(() => toast.classList.remove('show'), 3200);
+    }
+
+    function scheduleWorkspaceRefresh(message, delay = 900) {
+        showRealtimeToast(message);
+        window.clearTimeout(realtimeRefreshTimer);
+        realtimeRefreshTimer = window.setTimeout(() => window.location.reload(), delay);
+    }
+
+    function setupWorkspaceRealtime() {
+        if (!window.signalR || !currentSubjectId) return;
+
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl('/hubs/workspace')
+            .withAutomaticReconnect()
+            .build();
+
+        connection.on('SubjectChanged', event => {
+            if (Number(event?.subjectId || 0) !== currentSubjectId) return;
+
+            if (String(event?.action || '') === 'deleted') {
+                showRealtimeToast(`${event.subjectName || 'This subject'} was deleted. Returning to dashboard...`);
+                window.setTimeout(() => { window.location.href = '/'; }, 850);
+                return;
+            }
+
+            scheduleWorkspaceRefresh('Subject settings changed. Refreshing workspace...');
+        });
+
+        connection.on('DocumentChanged', event => {
+            if (Number(event?.subjectId || 0) !== currentSubjectId) return;
+
+            const action = String(event?.action || '');
+            if (action === 'deleted' && event?.documentId) {
+                document.querySelector(`[data-document-card="${event.documentId}"]`)?.remove();
+            }
+
+            const fileLabel = event?.fileName ? `Document ${event.fileName}` : 'Document';
+            scheduleWorkspaceRefresh(`${fileLabel} ${action || 'changed'}. Updating workspace...`);
+        });
+
+        connection.on('MembershipChanged', event => {
+            if (Number(event?.subjectId || 0) !== currentSubjectId) return;
+            scheduleWorkspaceRefresh('Subject membership changed. Updating access...');
+        });
+
+        connection.start().catch(() => {
+            // Realtime updates are optional; normal page actions still work.
+        });
     }
 
     function setAiStatus(state, text) {

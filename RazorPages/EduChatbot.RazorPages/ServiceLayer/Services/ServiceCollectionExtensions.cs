@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace ServiceLayer.Services
 {
@@ -49,6 +50,7 @@ namespace ServiceLayer.Services
             services.AddScoped<IAuditLogService, AuditLogService>();
             services.AddScoped<IOrganizationService, OrganizationService>();
             services.AddScoped<IBillingService, BillingService>();
+            services.TryAddScoped<IRealtimeNotificationService, NoopRealtimeNotificationService>();
             services.AddScoped<IAdminService, AdminService>();
             services.AddScoped<ISubjectService, SubjectService>();
             services.AddScoped<IDocumentService, DocumentService>();

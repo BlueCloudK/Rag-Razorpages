@@ -1,9 +1,13 @@
+using PresentationLayer.Hubs;
+using PresentationLayer.Services;
 using ServiceLayer.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorPages();
+builder.Services.AddSignalR();
 builder.Services.AddEduChatbotServices(builder.Configuration);
+builder.Services.AddScoped<IRealtimeNotificationService, SignalRRealtimeNotificationService>();
 
 builder.Services.AddHttpClient("AiService", client =>
 {
@@ -26,5 +30,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapRazorPages();
+app.MapHub<WorkspaceHub>("/hubs/workspace");
 
 app.Run();

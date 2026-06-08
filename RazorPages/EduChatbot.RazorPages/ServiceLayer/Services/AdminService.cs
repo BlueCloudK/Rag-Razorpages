@@ -14,12 +14,18 @@ namespace ServiceLayer.Services
         private readonly ApplicationDbContext _context;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IAuditLogService _auditLogService;
+        private readonly IRealtimeNotificationService _realtime;
 
-        public AdminService(ApplicationDbContext context, UserManager<ApplicationUser> userManager, IAuditLogService auditLogService)
+        public AdminService(
+            ApplicationDbContext context,
+            UserManager<ApplicationUser> userManager,
+            IAuditLogService auditLogService,
+            IRealtimeNotificationService realtime)
         {
             _context = context;
             _userManager = userManager;
             _auditLogService = auditLogService;
+            _realtime = realtime;
         }
 
         public async Task<AdminUserManagementDto> GetUsersAsync()
@@ -81,6 +87,7 @@ namespace ServiceLayer.Services
             await EnsureOrganizationMembershipAsync(user.Id, role);
             await _context.SaveChangesAsync();
             await _auditLogService.RecordAsync("CreateUser", "Account", null, null, null, $"Created {role} account {user.Email}.");
+            await _realtime.AdminChangedAsync("users_changed");
             return new AuthResult { Success = true, Message = "User created." };
         }
 
@@ -99,6 +106,7 @@ namespace ServiceLayer.Services
             await EnsureOrganizationMembershipAsync(user.Id, role);
             await _context.SaveChangesAsync();
             await _auditLogService.RecordAsync("UpdateUserRole", "Account", null, null, null, $"Changed {user.Email} role to {role}.");
+            await _realtime.AdminChangedAsync("users_changed");
         }
 
         public async Task<AdminMembershipManagementDto> GetMembershipsAsync()
@@ -186,6 +194,7 @@ namespace ServiceLayer.Services
             }
             await _context.SaveChangesAsync();
             await _auditLogService.RecordAsync("AddMember", "SubjectMembership", null, input.SubjectId, null, $"Admin added user to subject as {roleInSubject}.");
+            await _realtime.MembershipChangedAsync("added", input.SubjectId, input.UserId);
         }
 
         public async Task RemoveMembershipAsync(int membershipId)
@@ -194,9 +203,12 @@ namespace ServiceLayer.Services
             if (membership == null)
                 return;
 
+            var subjectId = membership.SubjectId;
+            var userId = membership.UserId;
             _context.SubjectMemberships.Remove(membership);
             await _context.SaveChangesAsync();
-            await _auditLogService.RecordAsync("RemoveMember", "SubjectMembership", membershipId, membership.SubjectId, null, "Admin removed a subject membership.");
+            await _auditLogService.RecordAsync("RemoveMember", "SubjectMembership", membershipId, subjectId, null, "Admin removed a subject membership.");
+            await _realtime.MembershipChangedAsync("removed", subjectId, userId);
         }
 
         private async Task EnsureOrganizationMembershipAsync(string userId, string role)

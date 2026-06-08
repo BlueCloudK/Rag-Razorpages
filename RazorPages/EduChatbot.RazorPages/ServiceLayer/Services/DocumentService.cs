@@ -24,6 +24,7 @@ namespace ServiceLayer.Services
         private readonly ICurrentUserService _currentUser;
         private readonly ISubscriptionService _subscriptionService;
         private readonly IAuditLogService _auditLogService;
+        private readonly IRealtimeNotificationService _realtime;
 
         public DocumentService(
             ApplicationDbContext context,
@@ -32,7 +33,8 @@ namespace ServiceLayer.Services
             IAccessControlService accessControl,
             ICurrentUserService currentUser,
             ISubscriptionService subscriptionService,
-            IAuditLogService auditLogService)
+            IAuditLogService auditLogService,
+            IRealtimeNotificationService realtime)
         {
             _context = context;
             _environment = environment;
@@ -41,6 +43,7 @@ namespace ServiceLayer.Services
             _currentUser = currentUser;
             _subscriptionService = subscriptionService;
             _auditLogService = auditLogService;
+            _realtime = realtime;
         }
 
         public async Task<List<DocumentDto>> GetAllAsync()
@@ -202,6 +205,7 @@ namespace ServiceLayer.Services
             _context.Documents.Add(document);
             await _context.SaveChangesAsync();
             await _auditLogService.RecordAsync("UploadStarted", "Document", document.Id, subjectId, null, $"Uploaded document metadata for {document.FileName}.");
+            await _realtime.DocumentChangedAsync("uploaded", subjectId, document.Id, document.FileName);
 
             try
             {
@@ -258,6 +262,7 @@ namespace ServiceLayer.Services
             _context.Update(document);
             await _context.SaveChangesAsync();
             await _auditLogService.RecordAsync(document.IsIndexed ? "UploadIndexed" : "UploadFailed", "Document", document.Id, subjectId, null, $"{document.FileName}: {document.IndexStatus}.");
+            await _realtime.DocumentChangedAsync(document.IsIndexed ? "indexed" : "failed", subjectId, document.Id, document.FileName);
 
             return new DocumentUploadResult
             {
@@ -280,6 +285,8 @@ namespace ServiceLayer.Services
             if (!await _accessControl.CanDeleteDocumentAsync(document.SubjectId))
                 return false;
 
+            var subjectId = document.SubjectId;
+            var fileName = document.FileName;
             string fullPath = Path.Combine(_environment.WebRootPath, document.FilePath.TrimStart('/'));
             if (File.Exists(fullPath))
                 File.Delete(fullPath);
@@ -297,7 +304,8 @@ namespace ServiceLayer.Services
 
             _context.Documents.Remove(document);
             await _context.SaveChangesAsync();
-            await _auditLogService.RecordAsync("Delete", "Document", document.Id, document.SubjectId, null, $"Deleted document {document.FileName}.");
+            await _auditLogService.RecordAsync("Delete", "Document", id, subjectId, null, $"Deleted document {fileName}.");
+            await _realtime.DocumentChangedAsync("deleted", subjectId, id, fileName);
             return true;
         }
 

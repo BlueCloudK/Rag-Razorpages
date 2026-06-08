@@ -93,6 +93,9 @@
         .dark-input:focus { color: #fff; border-color: #6675ee; background: #101012; box-shadow: 0 0 0 3px rgba(102,117,238,.12); }
         .dark-input::placeholder { color: #697181; }
         .form-label { color: #c5cbd6; font-weight: 700; }
+        .realtime-toast { position: fixed; right: 18px; bottom: 18px; z-index: 30; max-width: 340px; border: 1px solid #2c3d61; border-radius: 10px; background: #171b28; color: #e8ebf4; box-shadow: 0 18px 55px rgba(0,0,0,.38); padding: 12px 14px; display: none; align-items: flex-start; gap: 10px; font-size: .78rem; line-height: 1.45; }
+        .realtime-toast.show { display: flex; }
+        .realtime-toast i { color: #85d59d; margin-top: 1px; }
         @@media (max-width: 980px) {
             .dashboard-layout { grid-template-columns: 1fr; }
             .side-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -189,7 +192,7 @@
                         var docs = subject.Documents?.Count() ?? 0;
                         var readyDocs = subject.Documents?.Count(d => d.IsIndexed) ?? 0;
                         var usage = Model.SubjectUsage.TryGetValue(subject.Id, out var item) ? item : null;
-                        <article class="course-row">
+                        <article class="course-row" data-subject-card="@subject.Id">
                             <a class="course-main" asp-page="/Chat/Index" asp-route-subjectId="@subject.Id" asp-route-tab="chat">
                                 <span class="course-icon"><i class="bi bi-book"></i></span>
                                 <span>
@@ -316,6 +319,72 @@
     </div>
 }
 
+<div class="realtime-toast" id="realtimeToast" role="status" aria-live="polite">
+    <i class="bi bi-broadcast-pin"></i>
+    <span id="realtimeToastText">Workspace updated.</span>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+<script>
+    (function () {
+        if (!window.signalR) return;
+
+        const toast = document.getElementById('realtimeToast');
+        const toastText = document.getElementById('realtimeToastText');
+        let toastTimer = null;
+        let refreshTimer = null;
+
+        function showRealtimeToast(message) {
+            if (!toast || !toastText) return;
+            toastText.textContent = message;
+            toast.classList.add('show');
+            window.clearTimeout(toastTimer);
+            toastTimer = window.setTimeout(() => toast.classList.remove('show'), 2800);
+        }
+
+        function scheduleRefresh(message, delay = 900) {
+            showRealtimeToast(message);
+            window.clearTimeout(refreshTimer);
+            refreshTimer = window.setTimeout(() => window.location.reload(), delay);
+        }
+
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl('/hubs/workspace')
+            .withAutomaticReconnect()
+            .build();
+
+        connection.on('SubjectChanged', event => {
+            const action = String(event?.action || '');
+            const subjectId = event?.subjectId;
+            if (action === 'deleted' && subjectId) {
+                document.querySelector(`[data-subject-card="${subjectId}"]`)?.remove();
+                scheduleRefresh(`${event.subjectName || 'A subject'} was deleted. Updating workspace...`);
+                return;
+            }
+
+            scheduleRefresh(action === 'created'
+                ? 'A new subject was created. Updating workspace...'
+                : 'A subject was updated. Refreshing dashboard...');
+        });
+
+        connection.on('DocumentChanged', event => {
+            const name = event?.fileName ? `Document ${event.fileName}` : 'Document';
+            scheduleRefresh(`${name} ${event?.action || 'changed'}. Updating counts...`);
+        });
+
+        connection.on('MembershipChanged', () => {
+            scheduleRefresh('Subject membership changed. Updating access...');
+        });
+
+        connection.on('AdminChanged', () => {
+            scheduleRefresh('Admin data changed. Updating dashboard...');
+        });
+
+        connection.start().catch(() => {
+            // Realtime is a convenience layer; the app still works with normal refresh.
+        });
+    })();
+</script>
 </body>
 </html>

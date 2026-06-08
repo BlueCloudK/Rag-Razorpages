@@ -24,6 +24,7 @@ namespace ServiceLayer.Services
         private readonly IUsageService _usageService;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IAuditLogService _auditLogService;
+        private readonly IRealtimeNotificationService _realtime;
 
         public ChatService(
             ApplicationDbContext context,
@@ -33,7 +34,8 @@ namespace ServiceLayer.Services
             ISubscriptionService subscriptionService,
             IUsageService usageService,
             UserManager<ApplicationUser> userManager,
-            IAuditLogService auditLogService)
+            IAuditLogService auditLogService,
+            IRealtimeNotificationService realtime)
         {
             _context = context;
             _httpClientFactory = httpClientFactory;
@@ -43,6 +45,7 @@ namespace ServiceLayer.Services
             _usageService = usageService;
             _userManager = userManager;
             _auditLogService = auditLogService;
+            _realtime = realtime;
         }
 
         public async Task<ChatPageDto?> GetChatPageAsync(int subjectId, int? sessionId = null)
@@ -440,6 +443,7 @@ namespace ServiceLayer.Services
             });
             await _context.SaveChangesAsync();
             await _auditLogService.RecordAsync("AddMember", "SubjectMembership", null, subjectId, null, $"Added {targetUser.Email} as {roleInSubject}.");
+            await _realtime.MembershipChangedAsync("added", subjectId, userId);
             return true;
         }
 
@@ -468,6 +472,7 @@ namespace ServiceLayer.Services
             _context.SubjectMemberships.Remove(membership);
             await _context.SaveChangesAsync();
             await _auditLogService.RecordAsync("RemoveMember", "SubjectMembership", membership.Id, subjectId, null, $"Removed subject membership for {targetUser?.Email ?? membership.UserId}.");
+            await _realtime.MembershipChangedAsync("removed", subjectId, membership.UserId);
             return true;
         }
 
