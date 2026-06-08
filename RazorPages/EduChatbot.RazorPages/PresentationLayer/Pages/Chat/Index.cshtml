@@ -11,6 +11,7 @@
     var processingCount = Model.Documents?.Count(d => !d.IsIndexed && d.IndexStatus != "Failed") ?? 0;
     var messageCount = Model.CurrentSession.Messages?.Count() ?? 0;
     var activeSessionId = Model.ActiveSessionId != 0 ? Model.ActiveSessionId : Model.CurrentSession?.Id ?? 0;
+    var activeTab = Model.ActiveTab;
 }
 <!DOCTYPE html>
 <html lang="vi">
@@ -35,6 +36,10 @@
         .sb-back:hover { background: #2a2a2e; color: #e8eaed; }
         .sb-title { font-weight: 600; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .sb-code { font-size: 0.75rem; color: #667eea; font-weight: 500; }
+        .subject-nav { border-bottom: 1px solid #1e1e22; padding: 12px 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+        .workspace-tab { color: #9aa0a6; text-decoration: none; border: 1px solid #2a2a2e; background: #1a1a1e; border-radius: 8px; padding: 8px 10px; font-size: 0.76rem; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: 0.2s; }
+        .workspace-tab:hover { color: #ffffff; border-color: #667eea; background: rgba(102,126,234,0.12); }
+        .workspace-tab.active { color: #ffffff; background: #24315a; border-color: #3c4f91; }
         
         .sb-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
         .workspace-summary { border-bottom: 1px solid #1e1e22; color: #9aa0a6; display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 16px; padding: 0 2px 14px; font-size: 0.73rem; line-height: 1.4; }
@@ -165,6 +170,25 @@
         .ai-status.error { background: #3a1b1b; color: #f28b82; border-color: #5a2828; }
         
         .chat-area { flex: 1; overflow-y: auto; padding: 30px 10%; display: flex; flex-direction: column; scroll-behavior: smooth; }
+        .workspace-panel { flex: 1; overflow-y: auto; padding: 34px 8%; }
+        .workspace-panel h2 { font-size: 1.45rem; font-weight: 800; margin-bottom: 8px; color: #f5f7fb; }
+        .workspace-panel .panel-subtitle { color: #9aa0a6; margin-bottom: 22px; max-width: 760px; line-height: 1.55; }
+        .workspace-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+        .workspace-card { background: #1a1a1e; border: 1px solid #2a2a2e; border-radius: 12px; padding: 16px; }
+        .workspace-card-title { font-weight: 800; color: #f1f3f4; margin-bottom: 6px; word-break: break-word; }
+        .workspace-card-meta { color: #9aa0a6; font-size: 0.82rem; line-height: 1.5; }
+        .panel-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-bottom: 18px; }
+        .panel-btn { border: 1px solid #303038; background: #1a1a1e; color: #d4d4d8; border-radius: 8px; padding: 8px 11px; text-decoration: none; display: inline-flex; align-items: center; gap: 7px; font-size: 0.82rem; cursor: pointer; }
+        .panel-btn:hover { color: #ffffff; border-color: #667eea; background: rgba(102,126,234,0.12); }
+        .panel-btn.primary { border-color: #3c4f91; background: #24315a; color: #ffffff; }
+        .panel-btn.danger { border-color: #5a2828; background: #2a1719; color: #f28b82; }
+        .panel-btn.danger:hover { border-color: #ea4335; background: #3a1b1b; color: #ffffff; }
+        .panel-form { display: grid; gap: 14px; max-width: 620px; }
+        .panel-label { color: #b9c0cd; font-size: 0.78rem; font-weight: 700; }
+        .panel-input { width: 100%; border: 1px solid #303038; background: #101014; color: #f1f3f4; border-radius: 8px; padding: 10px 12px; outline: none; }
+        .panel-input:focus { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,0.12); }
+        .settings-row { display: grid; grid-template-columns: 170px 1fr; gap: 16px; padding: 12px 0; border-bottom: 1px solid #24242a; color: #b9c0cd; }
+        .settings-row strong { color: #f1f3f4; }
         
         /* Messages */
         .msg-user { align-self: flex-end; background: #1e2a4a; border: 1px solid #2a3a5a; color: #e8eaed; padding: 14px 18px; border-radius: 16px 16px 4px 16px; margin-bottom: 24px; max-width: 75%; font-size: 0.95rem; line-height: 1.5; }
@@ -237,6 +261,14 @@
                 <div class="sb-code">@subjectCode</div>
             </div>
         </div>
+        <nav class="subject-nav" aria-label="Subject workspace navigation">
+            <a class="workspace-tab @(activeTab == "chat" ? "active" : "")" asp-page="/Chat/Index" asp-route-subjectId="@subjectId" asp-route-sessionId="@activeSessionId" asp-route-tab="chat"><i class="bi bi-chat-dots"></i> Chat</a>
+            @if (Model.CanManageSubject)
+            {
+                <a class="workspace-tab @(activeTab == "members" ? "active" : "")" asp-page="/Chat/Index" asp-route-subjectId="@subjectId" asp-route-tab="members"><i class="bi bi-people"></i> Members</a>
+                <a class="workspace-tab @(activeTab == "settings" ? "active" : "")" asp-page="/Chat/Index" asp-route-subjectId="@subjectId" asp-route-tab="settings"><i class="bi bi-gear"></i> Settings</a>
+            }
+        </nav>
         
         <div class="sb-body">
             @if (Model.CurrentSession != null)
@@ -251,117 +283,120 @@
                     <span class="dot">·</span>
                     <span><strong>@messageCount</strong> messages</span>
                 </div>
-                
-                @if (Model.CanUploadDocuments)
-                {
-                    <div class="sec-title"><i class="bi bi-cloud-arrow-up"></i> Upload documents</div>
-                    <div class="upload-area">
-                        <form method="post" enctype="multipart/form-data" id="uploadForm" asp-page-handler="Upload" asp-route-subjectId="@subjectId">
-                            <input type="hidden" name="subjectId" value="@subjectId" />
-                            <input type="hidden" name="sessionId" value="@activeSessionId" />
-                            <label class="upload-btn">
-                                <i class="bi bi-plus-lg"></i> Add source (PDF, DOCX, PPTX)
-                                <input type="file" name="file" id="uploadFile" class="d-none" accept=".pdf,.docx,.pptx" />
-                            </label>
-                        </form>
-                        <div class="upload-progress" id="uploadProgress">
-                            <div class="progress-head">
-                                <span class="progress-file" id="progressFile">Uploading document...</span>
-                                <span class="progress-percent" id="progressPercent">0%</span>
-                            </div>
-                            <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
-                            <div class="progress-note" id="progressNote">Sending file to server.</div>
-                        </div>
-                    </div>
-                }
-                
-                <!-- Document List -->
-                <div class="sec-title" id="documentList"><i class="bi bi-files"></i> Indexed documents</div>
-                
-                @if (Model.Documents != null && Model.Documents.Any())
-                {
-                    foreach (var doc in Model.Documents)
-                    {
-                        var ext = System.IO.Path.GetExtension(doc.FileName).ToLower();
-                        var iconClass = ext == ".pdf" ? "bi-filetype-pdf src-icon-pdf"
-                            : ext == ".docx" ? "bi-filetype-docx src-icon-doc"
-                            : "bi-filetype-pptx src-icon-ppt";
 
-                        <div class="src-card">
-                            <i class="bi @iconClass src-icon"></i>
-                            <div class="flex-grow-1 overflow-hidden">
-                                <div class="src-name" title="@doc.FileName">@doc.FileName</div>
-                                <div class="src-detail">
-                                    Uploaded: @doc.UploadedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                @if (activeTab == "chat")
+                {
+                    @if (Model.CanUploadDocuments)
+                    {
+                        <div class="sec-title"><i class="bi bi-cloud-arrow-up"></i> Upload documents</div>
+                        <div class="upload-area">
+                            <form method="post" enctype="multipart/form-data" id="uploadForm" asp-page-handler="Upload" asp-route-subjectId="@subjectId">
+                                <input type="hidden" name="subjectId" value="@subjectId" />
+                                <input type="hidden" name="sessionId" value="@activeSessionId" />
+                                <label class="upload-btn">
+                                    <i class="bi bi-plus-lg"></i> Add source (PDF, DOCX, PPTX)
+                                    <input type="file" name="file" id="uploadFile" class="d-none" accept=".pdf,.docx,.pptx" />
+                                </label>
+                            </form>
+                            <div class="upload-progress" id="uploadProgress">
+                                <div class="progress-head">
+                                    <span class="progress-file" id="progressFile">Uploading document...</span>
+                                    <span class="progress-percent" id="progressPercent">0%</span>
                                 </div>
-                                <div class="mt-1">
-                                    @if (doc.IsIndexed)
-                                    {
-                                        <span class="badge-ok"><i class="bi bi-check-circle-fill"></i> Chunked & embedded</span>
-                                        <span class="chunk-pill">@doc.ChunkCount chunks</span>
-                                    }
-                                    else if (doc.IndexStatus == "Failed")
-                                    {
-                                        <span class="badge-fail" title="@doc.IndexMessage"><i class="bi bi-exclamation-triangle-fill"></i> Index failed</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge-wait"><i class="bi bi-arrow-repeat"></i> Queued</span>
-                                    }
-                                </div>
-                            </div>
-                            <div class="src-actions">
-                                @if (doc.IsIndexed)
-                                {
-                                    <button type="button"
-                                            class="inspect-btn"
-                                            title="View AI index and answer flow"
-                                            data-inspect-document-id="@doc.Id"
-                                            data-inspect-file-name="@doc.FileName">
-                                        <i class="bi bi-cpu"></i>
-                                    </button>
-                                }
-                                @if (Model.CanDeleteDocuments)
-                                {
-                                    <form method="post" asp-page-handler="DeleteDocument" asp-route-id="@doc.Id" asp-route-subjectId="@subjectId" asp-route-sessionId="@activeSessionId" onsubmit="return confirmDelete(event, this);">
-                                        <button type="submit" class="del-btn" title="Delete"><i class="bi bi-trash3"></i></button>
-                                    </form>
-                                }
+                                <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+                                <div class="progress-note" id="progressNote">Sending file to server.</div>
                             </div>
                         </div>
                     }
-                }
-                else
-                {
-                    <div class="empty-hint">
-                        <i class="bi bi-inbox"></i>
-                        No documents yet.<br/>
-                        Upload a file so AI can answer from trusted sources.
-                    </div>
-                }
-
-                <div class="history-section">
-                    <div class="history-head">
-                        <div class="sec-title mb-0"><i class="bi bi-clock-history"></i> Chat history</div>
-                        <form method="post" asp-page-handler="NewSession" asp-route-subjectId="@subjectId">
-                            <button type="submit" class="history-new" title="New chat"><i class="bi bi-plus-lg"></i></button>
-                        </form>
-                    </div>
-                    <div class="history-list">
-                        @foreach (var session in Model.ChatSessions ?? Enumerable.Empty<ServiceLayer.Models.ChatSessionSummaryDto>())
+                 
+                    <!-- Document List -->
+                    <div class="sec-title" id="documentList"><i class="bi bi-files"></i> Indexed documents</div>
+                 
+                    @if (Model.Documents != null && Model.Documents.Any())
+                    {
+                        foreach (var doc in Model.Documents)
                         {
-                            <div class="history-item @(session.IsActive ? "active" : "")">
-                                <a class="text-decoration-none overflow-hidden" asp-page="/Chat/Index" asp-route-subjectId="@subjectId" asp-route-sessionId="@session.Id">
-                                    <div class="history-title">@session.Title</div>
-                                    <div class="history-meta">@session.MessageCount messages - @session.LastMessagePreview</div>
-                                </a>
-                                <form method="post" asp-page-handler="DeleteSession" asp-route-subjectId="@subjectId" asp-route-sessionId="@session.Id" onsubmit="return confirmDeleteSession(event, this);">
-                                    <button type="submit" class="history-delete" title="Delete chat"><i class="bi bi-x-lg"></i></button>
-                                </form>
+                            var ext = System.IO.Path.GetExtension(doc.FileName).ToLower();
+                            var iconClass = ext == ".pdf" ? "bi-filetype-pdf src-icon-pdf"
+                                : ext == ".docx" ? "bi-filetype-docx src-icon-doc"
+                                : "bi-filetype-pptx src-icon-ppt";
+
+                            <div class="src-card">
+                                <i class="bi @iconClass src-icon"></i>
+                                <div class="flex-grow-1 overflow-hidden">
+                                    <div class="src-name" title="@doc.FileName">@doc.FileName</div>
+                                    <div class="src-detail">
+                                        Uploaded: @doc.UploadedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                    </div>
+                                    <div class="mt-1">
+                                        @if (doc.IsIndexed)
+                                        {
+                                            <span class="badge-ok"><i class="bi bi-check-circle-fill"></i> Chunked & embedded</span>
+                                            <span class="chunk-pill">@doc.ChunkCount chunks</span>
+                                        }
+                                        else if (doc.IndexStatus == "Failed")
+                                        {
+                                            <span class="badge-fail" title="@doc.IndexMessage"><i class="bi bi-exclamation-triangle-fill"></i> Index failed</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge-wait"><i class="bi bi-arrow-repeat"></i> Queued</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="src-actions">
+                                    @if (doc.IsIndexed)
+                                    {
+                                        <button type="button"
+                                                class="inspect-btn"
+                                                title="View AI index and answer flow"
+                                                data-inspect-document-id="@doc.Id"
+                                                data-inspect-file-name="@doc.FileName">
+                                            <i class="bi bi-cpu"></i>
+                                        </button>
+                                    }
+                                    @if (Model.CanDeleteDocuments)
+                                    {
+                                        <form method="post" asp-page-handler="DeleteDocument" asp-route-id="@doc.Id" asp-route-subjectId="@subjectId" asp-route-sessionId="@activeSessionId" onsubmit="return confirmDelete(event, this);">
+                                            <button type="submit" class="del-btn" title="Delete"><i class="bi bi-trash3"></i></button>
+                                        </form>
+                                    }
+                                </div>
                             </div>
                         }
+                    }
+                    else
+                    {
+                        <div class="empty-hint">
+                            <i class="bi bi-inbox"></i>
+                            No documents yet.<br/>
+                            Upload a file so AI can answer from trusted sources.
+                        </div>
+                    }
+
+                    <div class="history-section">
+                        <div class="history-head">
+                            <div class="sec-title mb-0"><i class="bi bi-clock-history"></i> Chat history</div>
+                            <form method="post" asp-page-handler="NewSession" asp-route-subjectId="@subjectId">
+                                <button type="submit" class="history-new" title="New chat"><i class="bi bi-plus-lg"></i></button>
+                            </form>
+                        </div>
+                        <div class="history-list">
+                            @foreach (var session in Model.ChatSessions ?? Enumerable.Empty<ServiceLayer.Models.ChatSessionSummaryDto>())
+                            {
+                                <div class="history-item @(session.IsActive ? "active" : "")">
+                                    <a class="text-decoration-none overflow-hidden" asp-page="/Chat/Index" asp-route-subjectId="@subjectId" asp-route-sessionId="@session.Id" asp-route-tab="chat">
+                                        <div class="history-title">@session.Title</div>
+                                        <div class="history-meta">@session.MessageCount messages - @session.LastMessagePreview</div>
+                                    </a>
+                                    <form method="post" asp-page-handler="DeleteSession" asp-route-subjectId="@subjectId" asp-route-sessionId="@session.Id" onsubmit="return confirmDeleteSession(event, this);">
+                                        <button type="submit" class="history-delete" title="Delete chat"><i class="bi bi-x-lg"></i></button>
+                                    </form>
+                                </div>
+                            }
+                        </div>
                     </div>
-                </div>
+                }
             }
         </div>
     </div>
@@ -370,84 +405,166 @@
     <div class="main">
         @if (Model.CurrentSession != null)
         {
-            <div class="chat-topbar">
-                <div class="chat-topbar-title"><i class="bi bi-chat-square-text"></i> Conversation</div>
-                <div class="topbar-actions">
-                    <div class="ai-status starting" id="aiStatus"><span class="spinner-border spinner-border-sm"></span> AI is starting</div>
-                    @if (processingCount > 0)
-                    {
-                        <div class="ai-status starting"><span class="spinner-border spinner-border-sm"></span> Indexing @processingCount documents</div>
-                    }
-                    <div class="scope-badge"><i class="bi bi-shield-lock-fill"></i> Limited to @docCount documents</div>
-                </div>
-            </div>
-            
-            <div class="chat-area" id="chatBox">
-                @if (Model.CurrentSession.Messages == null || !Model.CurrentSession.Messages.Any())
-                {
-                    <div class="welcome">
-                        <div class="welcome-icon"><i class="bi bi-mortarboard"></i></div>
-                        <h3>Start asking questions</h3>
-                        <p>Upload documents on the left, then ask naturally. AI answers from indexed content and cites source documents.</p>
-                        <div class="welcome-tips">
-                            <div class="tip" onclick="fillQ('Summarize the main ideas in this document')"><i class="bi bi-lightbulb"></i> Summarize the main ideas</div>
-                            <div class="tip" onclick="fillQ('List the important concepts')"><i class="bi bi-list-task"></i> List important concepts</div>
-                            <div class="tip" onclick="fillQ('Explain chapter 1 based on the document')"><i class="bi bi-book"></i> Explain chapter 1</div>
-                        </div>
-                    </div>
-                }
-                else
-                {
-                    foreach (var msg in Model.CurrentSession.Messages.OrderBy(m => m.Timestamp))
-                    {
-                        if (msg.Role == "User")
+            @if (activeTab == "chat")
+            {
+                <div class="chat-topbar">
+                    <div class="chat-topbar-title"><i class="bi bi-chat-square-text"></i> Conversation</div>
+                    <div class="topbar-actions">
+                        <div class="ai-status starting" id="aiStatus"><span class="spinner-border spinner-border-sm"></span> AI is starting</div>
+                        @if (processingCount > 0)
                         {
-                            <div class="msg-user">@msg.Content</div>
+                            <div class="ai-status starting"><span class="spinner-border spinner-border-sm"></span> Indexing @processingCount documents</div>
                         }
-                        else
+                        <div class="scope-badge"><i class="bi bi-shield-lock-fill"></i> Limited to @docCount documents</div>
+                    </div>
+                </div>
+                
+                <div class="chat-area" id="chatBox">
+                    @if (Model.CurrentSession.Messages == null || !Model.CurrentSession.Messages.Any())
+                    {
+                        <div class="welcome">
+                            <div class="welcome-icon"><i class="bi bi-mortarboard"></i></div>
+                            <h3>Start asking questions</h3>
+                            <p>Upload documents on the left, then ask naturally. AI answers from indexed content and cites source documents.</p>
+                            <div class="welcome-tips">
+                                <div class="tip" onclick="fillQ('Summarize the main ideas in this document')"><i class="bi bi-lightbulb"></i> Summarize the main ideas</div>
+                                <div class="tip" onclick="fillQ('List the important concepts')"><i class="bi bi-list-task"></i> List important concepts</div>
+                                <div class="tip" onclick="fillQ('Explain chapter 1 based on the document')"><i class="bi bi-book"></i> Explain chapter 1</div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        foreach (var msg in Model.CurrentSession.Messages.OrderBy(m => m.Timestamp))
                         {
-                            <div class="msg-bot">
-                                <div class="bot-header">
-                                    <div class="bot-avatar"><i class="bi bi-stars"></i></div>
-                                    <span class="bot-label">EduChatbot AI</span>
-                                </div>
-                                <div class="bot-content" data-markdown="@msg.Content"></div>
-                                
-                                @if (!string.IsNullOrEmpty(msg.SourceDocuments))
-                                {
-                                    <div class="sources-used">
-                                        <div class="sources-head"><i class="bi bi-link-45deg"></i> Sources used</div>
-                                        <div class="sources-list">
-                                        @foreach (var src in msg.SourceDocuments.Split(",", StringSplitOptions.RemoveEmptyEntries))
-                                        {
-                                            <div class="source-row">
-                                                <div class="source-name"><i class="bi bi-file-earmark-text"></i> @src.Trim()</div>
-                                                <div class="source-meta">Referenced by this answer</div>
-                                            </div>
-                                        }
-                                        </div>
+                            if (msg.Role == "User")
+                            {
+                                <div class="msg-user">@msg.Content</div>
+                            }
+                            else
+                            {
+                                <div class="msg-bot">
+                                    <div class="bot-header">
+                                        <div class="bot-avatar"><i class="bi bi-stars"></i></div>
+                                        <span class="bot-label">EduChatbot AI</span>
                                     </div>
+                                    <div class="bot-content" data-markdown="@msg.Content"></div>
+                                    
+                                    @if (!string.IsNullOrEmpty(msg.SourceDocuments))
+                                    {
+                                        <div class="sources-used">
+                                            <div class="sources-head"><i class="bi bi-link-45deg"></i> Sources used</div>
+                                            <div class="sources-list">
+                                            @foreach (var src in msg.SourceDocuments.Split(",", StringSplitOptions.RemoveEmptyEntries))
+                                            {
+                                                <div class="source-row">
+                                                    <div class="source-name"><i class="bi bi-file-earmark-text"></i> @src.Trim()</div>
+                                                    <div class="source-meta">Referenced by this answer</div>
+                                                </div>
+                                            }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+
+                <div class="input-area">
+                    <form method="post" id="chatForm" asp-page-handler="SendMessage" asp-route-subjectId="@subjectId">
+                        <input type="hidden" name="subjectId" value="@subjectId" />
+                        <input type="hidden" name="sessionId" value="@activeSessionId" />
+                        <div class="input-box">
+                            <input type="text" name="content" id="chatInput" placeholder="Ask about the indexed documents..." required autocomplete="off" />
+                            <button type="submit" class="send-btn" id="sendBtn"><i class="bi bi-arrow-up"></i></button>
+                        </div>
+                        <div class="input-hint"><i class="bi bi-shield-lock me-1"></i>AI answers from uploaded documents only and attaches source citations automatically.</div>
+                    </form>
+                </div>
+            }
+            else if (activeTab == "members" && Model.CanManageSubject)
+            {
+                <div class="workspace-panel">
+                    <h2>Members</h2>
+                    <p class="panel-subtitle">Manage who can access @subjectName. Subject leads can add lecturers or students from the same organization; system admins cannot be removed here.</p>
+                    @if (Model.AvailableSubjectMembers?.Any() == true)
+                    {
+                        <form method="post" asp-page-handler="AddMember" asp-route-subjectId="@subjectId" class="panel-actions">
+                            <select class="panel-input" name="userId" required style="max-width: 330px;">
+                                @foreach (var option in Model.AvailableSubjectMembers)
+                                {
+                                    <option value="@option.UserId">@option.Email</option>
+                                }
+                            </select>
+                            <input type="hidden" name="roleInSubject" value="auto" />
+                            <button type="submit" class="panel-btn primary"><i class="bi bi-person-plus"></i> Add member</button>
+                        </form>
+                    }
+                    else
+                    {
+                        <div class="empty-hint"><i class="bi bi-person-check"></i>No organization members are available to add.</div>
+                    }
+                    <div class="workspace-grid">
+                        @foreach (var member in Model.SubjectMembers ?? Enumerable.Empty<ServiceLayer.Models.SubjectMembershipAdminDto>())
+                        {
+                            var subjectRoleLabel = member.RoleInSubject == ServiceLayer.Services.AuthConstants.SubjectLead ? "Subject lead" : member.RoleInSubject;
+                            <div class="workspace-card">
+                                <div class="workspace-card-title"><i class="bi bi-person-circle me-2 text-primary"></i>@member.UserEmail</div>
+                                <div class="workspace-card-meta">Role in subject: @subjectRoleLabel</div>
+                                @if (!member.IsCurrentUser && !member.IsSystemAdmin)
+                                {
+                                    <form method="post" asp-page-handler="RemoveMember" asp-route-subjectId="@subjectId" class="mt-3" onsubmit="return confirm('Remove this member from the subject?');">
+                                        <input type="hidden" name="membershipId" value="@member.Id" />
+                                        <button type="submit" class="panel-btn danger"><i class="bi bi-person-x"></i> Remove</button>
+                                    </form>
+                                }
+                                else if (member.IsSystemAdmin)
+                                {
+                                    <div class="workspace-card-meta mt-3"><i class="bi bi-shield-lock me-1"></i>System admin cannot be removed here.</div>
                                 }
                             </div>
                         }
-                    }
-                }
-            </div>
-
-            <div class="input-area">
-                <form method="post" id="chatForm" asp-page-handler="SendMessage" asp-route-subjectId="@subjectId">
-                    <input type="hidden" name="subjectId" value="@subjectId" />
-                    <input type="hidden" name="sessionId" value="@activeSessionId" />
-                    <div class="input-box">
-                        <input type="text" name="content" id="chatInput" placeholder="Ask about the indexed documents..." required autocomplete="off" />
-                        <button type="submit" class="send-btn" id="sendBtn"><i class="bi bi-arrow-up"></i></button>
                     </div>
-                    <div class="input-hint"><i class="bi bi-shield-lock me-1"></i>AI answers from uploaded documents only and attaches source citations automatically.</div>
-                </form>
-            </div>
+                </div>
+            }
+            else if (activeTab == "settings" && Model.CanManageSubject)
+            {
+                <div class="workspace-panel">
+                    <h2>Settings</h2>
+                    <p class="panel-subtitle">Update subject information and review the workspace rules for this subject. Subject deletion is reserved for system admins.</p>
+                    <div class="workspace-card">
+                        <form method="post" asp-page-handler="UpdateSubject" class="panel-form">
+                            <input type="hidden" name="Id" value="@subjectId" />
+                            <label>
+                                <span class="panel-label">Subject name</span>
+                                <input class="panel-input mt-1" type="text" name="Name" value="@subjectName" required />
+                            </label>
+                            <label>
+                                <span class="panel-label">Subject code</span>
+                                <input class="panel-input mt-1" type="text" name="Code" value="@subjectCode" required />
+                            </label>
+                            <div class="panel-actions mb-0">
+                                <button type="submit" class="panel-btn primary"><i class="bi bi-check2"></i> Save changes</button>
+                            </div>
+                        </form>
+                        <div class="settings-row mt-3"><strong>Documents</strong><span>@docCount total, @indexedCount indexed, @processingCount processing</span></div>
+                        <div class="settings-row"><strong>Chat history</strong><span>@(Model.ChatSessions?.Count ?? 0) sessions for your account in this subject</span></div>
+                        <div class="settings-row"><strong>Access rule</strong><span>Only Admin or Subject lead can edit subject settings and manage members. Only Subject lead can upload/delete documents.</span></div>
+                        @if (Model.CanDeleteSubject)
+                        {
+                            <form method="post" asp-page-handler="DeleteSubject" asp-route-subjectId="@subjectId" class="mt-3" onsubmit="return confirm('Delete this subject, its documents, memberships, and chat history?');">
+                                <button type="submit" class="panel-btn danger"><i class="bi bi-trash3"></i> Delete subject</button>
+                            </form>
+                        }
+                    </div>
+                </div>
+            }
         }
     </div>
 
+    @if (activeTab == "chat")
+    {
     <aside class="circuit-panel" aria-label="AI processing circuit">
         <div class="circuit-head">
             <div class="circuit-title"><i class="bi bi-cpu"></i> AI Circuit Live</div>
@@ -484,6 +601,7 @@
             </div>
         </div>
     </aside>
+    }
 </div>
 
 <div class="inspect-modal" id="chunkInspector" aria-hidden="true">

@@ -9,12 +9,21 @@ public class IndexModel : PageModel
 {
     private readonly IChatService _chatService;
     private readonly IDocumentService _documentService;
+    private readonly ISubjectService _subjectService;
+    private readonly IAccessControlService _accessControlService;
     private readonly IHttpClientFactory _httpClientFactory;
 
-    public IndexModel(IChatService chatService, IDocumentService documentService, IHttpClientFactory httpClientFactory)
+    public IndexModel(
+        IChatService chatService,
+        IDocumentService documentService,
+        ISubjectService subjectService,
+        IAccessControlService accessControlService,
+        IHttpClientFactory httpClientFactory)
     {
         _chatService = chatService;
         _documentService = documentService;
+        _subjectService = subjectService;
+        _accessControlService = accessControlService;
         _httpClientFactory = httpClientFactory;
     }
 
@@ -23,12 +32,17 @@ public class IndexModel : PageModel
     public IList<ChatSessionSummaryDto> ChatSessions { get; private set; } = new List<ChatSessionSummaryDto>();
     public int ActiveSessionId { get; private set; }
     public IList<DocumentDto> Documents { get; private set; } = new List<DocumentDto>();
+    public IList<SubjectMembershipAdminDto> SubjectMembers { get; private set; } = new List<SubjectMembershipAdminDto>();
+    public IList<SubjectMemberOptionDto> AvailableSubjectMembers { get; private set; } = new List<SubjectMemberOptionDto>();
+    public string ActiveTab { get; private set; } = "chat";
+    public bool CanManageSubject { get; private set; }
     public bool CanUploadDocuments { get; private set; }
     public bool CanDeleteDocuments { get; private set; }
+    public bool CanDeleteSubject { get; private set; }
 
-    public async Task<IActionResult> OnGetAsync(int subjectId, int? sessionId)
+    public async Task<IActionResult> OnGetAsync(int subjectId, int? sessionId, string? tab = null)
     {
-        var loaded = await LoadSubjectAsync(subjectId, sessionId);
+        var loaded = await LoadSubjectAsync(subjectId, sessionId, tab);
         return loaded ? Page() : RedirectToPage("/Index");
     }
 
@@ -114,7 +128,31 @@ public class IndexModel : PageModel
         return RedirectToPage(new { subjectId, sessionId });
     }
 
-    private async Task<bool> LoadSubjectAsync(int subjectId, int? sessionId)
+    public async Task<IActionResult> OnPostAddMemberAsync(int subjectId, string userId, string roleInSubject)
+    {
+        await _chatService.AddSubjectMemberAsync(subjectId, userId, roleInSubject);
+        return RedirectToPage(new { subjectId, tab = "members" });
+    }
+
+    public async Task<IActionResult> OnPostRemoveMemberAsync(int subjectId, int membershipId)
+    {
+        await _chatService.RemoveSubjectMemberAsync(subjectId, membershipId);
+        return RedirectToPage(new { subjectId, tab = "members" });
+    }
+
+    public async Task<IActionResult> OnPostUpdateSubjectAsync(SubjectInput input)
+    {
+        await _subjectService.UpdateAsync(input);
+        return RedirectToPage(new { subjectId = input.Id, tab = "settings" });
+    }
+
+    public async Task<IActionResult> OnPostDeleteSubjectAsync(int subjectId)
+    {
+        await _subjectService.DeleteAsync(subjectId);
+        return RedirectToPage("/Index");
+    }
+
+    private async Task<bool> LoadSubjectAsync(int subjectId, int? sessionId, string? tab = null)
     {
         var page = await _chatService.GetChatPageAsync(subjectId, sessionId);
         if (page?.CurrentSubject == null)
@@ -128,8 +166,22 @@ public class IndexModel : PageModel
         ChatSessions = page.ChatSessions;
         ActiveSessionId = page.ActiveSessionId;
         Documents = page.CurrentDocuments;
+        SubjectMembers = page.SubjectMembers;
+        AvailableSubjectMembers = page.AvailableSubjectMembers;
+        CanManageSubject = page.CanManageSubject;
         CanUploadDocuments = page.CanUploadDocuments;
         CanDeleteDocuments = page.CanDeleteDocuments;
+        CanDeleteSubject = await _accessControlService.IsAdminAsync();
+        ActiveTab = NormalizeTab(tab, CanManageSubject);
         return true;
+    }
+
+    private static string NormalizeTab(string? tab, bool canManageSubject)
+    {
+        var value = (tab ?? "chat").Trim().ToLowerInvariant();
+        if (canManageSubject && (value == "members" || value == "settings"))
+            return value;
+
+        return "chat";
     }
 }
