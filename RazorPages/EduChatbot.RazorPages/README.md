@@ -139,16 +139,26 @@ Benchmark cases are in `AIServices/AiService/data/demo_benchmark_cases.json`; ru
 
 ## AI Circuit Live
 
-The chat workspace includes a right-side `AI Circuit Live` panel. It is designed for demo and debugging, not just decoration. It shows:
+The chat workspace includes a right-side `AI Circuit Live` panel. It is designed for demo and debugging, not just decoration. It shows the current question as a visual system map:
 
-- intent/scope decision;
-- rewritten query and whether history was used;
-- vector, keyword, and metadata branches running in parallel;
-- RRF/rerank and selected context chunks;
-- local model, confidence, fallback status;
-- citations actually attached to the answer.
+```text
+Gate and query
+Question -> Scope/intent -> Rewrite/history
 
-The detail modal presents the same trace as a vertical system map. Blocked questions show skipped retrieval nodes, making it clear that no document evidence was used.
+Parallel retrieval
+Vector + Keyword/BM25 + Metadata -> RRF/scoring
+
+Evidence and answer
+Context chunks -> Local model -> Citations
+```
+
+The compact panel shows status, intent, retrieval rounds, evidence count, and source count. The `Details` modal expands it into a clearer technical map:
+
+- indexing reference: upload, extract, chunk, embed, store in SQL/ChromaDB;
+- runtime trace: scope decision, rewritten query, retrieval branches, branch timings, candidate counts, selected chunks, model, confidence, fallback, and citations;
+- blocked/skipped path for greetings, random input, prompt injection, and weak evidence.
+
+The trace is operational metadata only. It does not expose hidden prompts or chain-of-thought.
 
 ## RAG Capability Matrix
 

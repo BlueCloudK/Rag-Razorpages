@@ -145,16 +145,27 @@ Benchmark cases live in `AIServices/AiService/data/demo_benchmark_cases.json`. R
 
 ## AI Circuit Live
 
-The chat page includes an `AI Circuit Live` panel for demonstrations. It shows how each question moves through the system:
+The chat page includes an `AI Circuit Live` panel for demonstrations. It is a visual processing map, not just a loading animation. The compact right-side panel shows the live path for the current question:
 
 ```text
-Question -> Scope -> Rewrite
-         -> Vector / Keyword / Metadata search in parallel
-         -> Rerank/RRF -> Context
-         -> Local LLM -> Citations
+Gate and query:
+Question -> Scope/intent gate -> Rewrite/history
+
+Parallel retrieval loop:
+Vector search + Keyword/BM25 search + Metadata search
+-> RRF/scoring merge
+
+Evidence and answer:
+Context window -> Local LLM -> Citations
 ```
 
-The compact panel shows status, intent, retrieval rounds, evidence count, and source count. The detail modal expands the same trace as a vertical system map with branch timings, candidate counts, selected chunks, confidence, model name, and citation decisions. If the intent gate blocks a question, the retrieval nodes are marked skipped/blocked instead of pretending that ChromaDB was used.
+The `Details` button opens a larger system-map modal. It includes:
+
+- an indexing reference: upload, extract text, structured chunking, Qwen embedding, SQL/ChromaDB storage;
+- the runtime trace for the current question: intent, subject scope, rewritten query, retrieval rounds, branch timings, candidate counts, selected evidence, confidence, answer model, and citations;
+- skipped/blocked states for greetings, random small talk, prompt injection, or weak evidence. In those cases ChromaDB nodes are marked skipped and no fake source is attached.
+
+The trace intentionally does not display hidden prompts or chain-of-thought. It only exposes operational metadata that helps explain how RAG chose or rejected evidence.
 
 ## RAG Capability Matrix
 

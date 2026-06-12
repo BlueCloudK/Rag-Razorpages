@@ -147,6 +147,9 @@
         .circuit-summary-card strong { display: block; color: #f3f6ff; font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .circuit-board { position: relative; display: grid; gap: 12px; padding-left: 18px; }
         .circuit-board::before { content: ""; position: absolute; left: 7px; top: 12px; bottom: 14px; width: 2px; background: linear-gradient(180deg, #28543d, #3c4f91 42%, #2a2d38 70%, #28543d); box-shadow: 0 0 18px rgba(102,126,234,.18); }
+        .circuit-phase { position: relative; display: flex; align-items: center; gap: 8px; color: #aeb7cf; font-size: .66rem; text-transform: uppercase; letter-spacing: .08em; font-weight: 900; margin-top: 2px; }
+        .circuit-phase::before { content: ""; position: absolute; left: -14px; top: 50%; width: 8px; height: 8px; transform: translateY(-50%); border-radius: 999px; background: #667eea; box-shadow: 0 0 14px rgba(102,126,234,.55); }
+        .circuit-phase span { border: 1px solid #2a2f42; border-radius: 999px; padding: 4px 7px; background: #141824; color: #dce2ff; }
         .circuit-row { display: grid; gap: 10px; position: relative; }
         .circuit-row.top { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         .circuit-row.branches { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -154,12 +157,15 @@
         .circuit-row.final { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
         .circuit-row::before { content: ""; position: absolute; left: -17px; top: 50%; width: 17px; height: 2px; background: #2e3c6d; opacity: .75; }
         .circuit-row.branches::after { content: ""; position: absolute; left: 16%; right: 16%; bottom: -9px; height: 18px; border-left: 1px solid #2e3c6d; border-right: 1px solid #2e3c6d; border-bottom: 1px solid #2e3c6d; border-radius: 0 0 12px 12px; opacity: .65; pointer-events: none; }
+        .circuit-lane-note { border: 1px solid #24314a; border-radius: 10px; background: #101722; color: #aeb7cf; font-size: .68rem; padding: 8px 10px; display: flex; align-items: center; gap: 8px; }
+        .circuit-lane-note i { color: #8ea2ff; }
         .circuit-node { position: relative; min-width: 0; }
         .circuit-node::before { content: ""; position: absolute; left: -22px; top: 19px; width: 8px; height: 8px; border-radius: 999px; background: #2a2d38; border: 1px solid #4a536a; z-index: 2; }
         .circuit-card { position: relative; border: 1px solid #252833; background: #15161a; border-radius: 10px; padding: 10px; min-height: 82px; overflow: hidden; }
         .circuit-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: #2b3040; }
         .circuit-icon { width: 26px; height: 26px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: #191b22; border: 1px solid #2a2d38; color: #737b91; margin-bottom: 8px; }
         .circuit-card h4 { margin: 0 0 5px; color: #e8eaed; font-size: .74rem; font-weight: 800; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .circuit-row.branches .circuit-card h4 { align-items: flex-start; flex-direction: column; gap: 4px; }
         .circuit-copy { margin: 0; color: #9aa0a6; font-size: .68rem; line-height: 1.42; }
         .circuit-node.branch .circuit-card { background: #121722; border-color: #26314a; }
         .circuit-wire { height: 12px; position: relative; }
@@ -179,7 +185,7 @@
         .trace-line { display: block; margin-top: 4px; overflow-wrap: anywhere; }
         .trace-line:first-child { margin-top: 0; }
         .trace-line strong { color: #cbd3e6; font-weight: 800; margin-right: 4px; }
-        .circuit-chip { color: #aab2ff; font-size: .64rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 800; }
+        .circuit-chip { color: #aab2ff; font-size: .6rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 800; flex: 0 0 auto; }
         .circuit-kpi { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
         .circuit-kpi span { border: 1px solid #2a2f42; border-radius: 999px; padding: 3px 6px; color: #b6bed4; font-size: .62rem; background: #10131a; }
         .circuit-detail { display: none; margin-top: 8px; border-top: 1px solid #242832; padding-top: 8px; }
@@ -200,12 +206,21 @@
         .circuit-dialog-close:hover { color: #fff; }
         .circuit-dialog-body { overflow: auto; padding: 18px; }
         .trace-dashboard { display: grid; gap: 14px; }
+        .trace-map-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid #252833; border-radius: 12px; background: linear-gradient(135deg, #151823, #111216); padding: 12px 14px; }
+        .trace-map-title h4 { margin: 0; color: #f5f7fb; font-size: .92rem; display: flex; align-items: center; gap: 8px; }
+        .trace-map-title p { margin: 4px 0 0; color: #9aa0a6; font-size: .72rem; }
         .trace-legend { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; border: 1px solid #252833; border-radius: 12px; background: #15161a; }
         .trace-legend span { display: inline-flex; align-items: center; gap: 6px; color: #aeb6c9; font-size: .7rem; border: 1px solid #2a2f42; border-radius: 999px; padding: 5px 8px; background: #101218; }
         .trace-legend i { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
         .trace-legend .ok { background: #81c995; }
         .trace-legend .run { background: #667eea; }
         .trace-legend .skip { background: #f28b82; }
+        .trace-mini-flow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+        .trace-mini-step { position: relative; border: 1px solid #293044; border-radius: 11px; background: #101218; padding: 10px; min-height: 78px; }
+        .trace-mini-step:not(:last-child)::after { content: ""; position: absolute; right: -8px; top: 50%; width: 8px; height: 2px; background: #3c4f91; box-shadow: 0 0 12px rgba(102,126,234,.35); }
+        .trace-mini-step strong { display: block; color: #f3f6ff; font-size: .72rem; margin-bottom: 4px; }
+        .trace-mini-step span { display: block; color: #9aa0a6; font-size: .66rem; line-height: 1.35; }
+        .trace-section-label { color: #8ea2ff; font-size: .7rem; text-transform: uppercase; letter-spacing: .09em; font-weight: 900; margin: 4px 0 -4px; }
         .trace-flow { position: relative; display: grid; gap: 12px; padding-left: 30px; }
         .trace-flow::before { content: ""; position: absolute; left: 12px; top: 18px; bottom: 18px; width: 2px; background: linear-gradient(180deg, #81c995, #667eea 40%, #667eea 62%, #81c995); box-shadow: 0 0 18px rgba(102,126,234,.28); }
         .trace-stage { position: relative; border: 1px solid #252833; background: #15161a; border-radius: 12px; padding: 13px; }
@@ -224,6 +239,9 @@
         .trace-loop { border: 1px solid #26314a; border-radius: 12px; padding: 12px; background: #111722; margin-bottom: 10px; position: relative; }
         .trace-loop-head { display: flex; justify-content: space-between; gap: 10px; color: #dce2f4; font-weight: 900; font-size: .78rem; margin-bottom: 10px; }
         .trace-loop-note { color: #8f96a7; font-size: .68rem; margin: -3px 0 10px; }
+        .trace-loop-path { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; margin-bottom: 10px; color: #aeb6c9; font-size: .66rem; }
+        .trace-loop-path span { border: 1px solid #27304b; border-radius: 999px; padding: 5px 8px; background: #10131a; text-align: center; }
+        .trace-loop-path i { color: #667eea; font-size: .85rem; }
         .trace-branches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
         .trace-branch { border: 1px solid #2a2f42; border-radius: 10px; padding: 9px; background: #10131a; min-width: 0; }
         .trace-branch strong { display: flex; justify-content: space-between; gap: 8px; color: #f2f4ff; font-size: .72rem; margin-bottom: 6px; }
@@ -231,7 +249,7 @@
         .trace-merge-note { margin-top: 8px; border-top: 1px solid #27304b; padding-top: 8px; color: #b8c2dc; font-size: .68rem; display: flex; gap: 8px; flex-wrap: wrap; }
         .trace-evidence-list { display: grid; gap: 8px; }
         .trace-evidence-list .evidence-item span { font-size: .72rem; max-height: none; }
-        @@media (max-width: 1100px) { .trace-branches, .trace-metrics { grid-template-columns: 1fr; } }
+        @@media (max-width: 1100px) { .trace-branches, .trace-metrics, .trace-mini-flow { grid-template-columns: 1fr; } .trace-mini-step:not(:last-child)::after { display: none; } }
         .realtime-toast { position: fixed; right: 18px; bottom: 18px; z-index: 70; max-width: 360px; border: 1px solid #2c3d61; border-radius: 10px; background: #171b28; color: #e8ebf4; box-shadow: 0 18px 55px rgba(0,0,0,.38); padding: 12px 14px; display: none; align-items: flex-start; gap: 10px; font-size: .78rem; line-height: 1.45; }
         .realtime-toast.show { display: flex; }
         .realtime-toast i { color: #85d59d; margin-top: 1px; }
@@ -657,6 +675,7 @@
                 <div class="circuit-summary-card"><span>Evidence</span><strong id="circuitEvidenceCount">0 chunks</strong></div>
             </div>
             <div class="circuit-board">
+                <div class="circuit-phase"><span>01</span> Gate and query</div>
                 <div class="circuit-row top">
                     <div class="circuit-node waiting" data-step="question">
                         <div class="circuit-card"><div class="circuit-icon"><i class="bi bi-chat-dots"></i></div><h4>Question <span class="circuit-chip">waiting</span></h4><div class="circuit-copy">Send a message to watch the RAG pipeline.</div></div>
@@ -669,6 +688,8 @@
                     </div>
                 </div>
                 <div class="circuit-wire"></div>
+                <div class="circuit-phase"><span>02</span> Parallel retrieval loop</div>
+                <div class="circuit-lane-note"><i class="bi bi-diagram-3"></i> Vector, keyword, and metadata branches run at the same request stage, then merge into one ranked candidate list.</div>
                 <div class="circuit-row branches">
                     <div class="circuit-node branch waiting" data-step="vector">
                         <div class="circuit-card"><div class="circuit-icon"><i class="bi bi-bounding-box-circles"></i></div><h4>Vector <span class="circuit-chip">waiting</span></h4><div class="circuit-copy">Embedding query and searching ChromaDB.</div></div>
@@ -681,6 +702,7 @@
                     </div>
                 </div>
                 <div class="circuit-wire"></div>
+                <div class="circuit-phase"><span>03</span> Evidence and answer</div>
                 <div class="circuit-row merge">
                     <div class="circuit-node waiting" data-step="merge">
                         <div class="circuit-card"><div class="circuit-icon"><i class="bi bi-filter-square"></i></div><h4>Rerank/RRF <span class="circuit-chip">waiting</span></h4><div class="circuit-copy">Re-scores retrieved candidates and picks stronger evidence.</div></div>
@@ -1380,6 +1402,11 @@
                     <span>${escapeHtml(merged)} merged · ${escapeHtml(selected)} selected</span>
                 </div>
                 <div class="trace-loop-note">Retriever runs these three branches in parallel. RRF/scoring reranks the combined candidates before context selection.</div>
+                <div class="trace-loop-path">
+                    <span>Parallel search branches</span>
+                    <i class="bi bi-arrow-right"></i>
+                    <span>Merge by RRF/scoring</span>
+                </div>
                 <div class="trace-branches">
                     ${renderTraceBranch('Vector', branches.vector || {})}
                     ${renderTraceBranch('Keyword', branches.keyword || {})}
@@ -1430,15 +1457,31 @@
 
         const retrievalSkipped = !rounds.length;
         return `<div class="trace-dashboard">
+            <div class="trace-map-title">
+                <div>
+                    <h4><i class="bi bi-motherboard"></i> System map for this answer</h4>
+                    <p>This view shows what the system used, which branches ran, which evidence entered context, and whether citations were attached.</p>
+                </div>
+                <span class="trace-stage-status">${retrievalSkipped ? 'guarded path' : 'rag path'}</span>
+            </div>
             <div class="trace-legend">
                 <span><i class="ok"></i> Done: step finished</span>
                 <span><i class="run"></i> Retriever: Vector, Keyword, Metadata run together</span>
                 <span><i class="skip"></i> Skipped/blocked: no trusted evidence used</span>
             </div>
+            <div class="trace-section-label">Document indexing reference</div>
+            <div class="trace-mini-flow">
+                <div class="trace-mini-step"><strong>Upload</strong><span>Lecturer adds PDF, DOCX, PPT, or PPTX into a subject workspace.</span></div>
+                <div class="trace-mini-step"><strong>Extract</strong><span>AI Service extracts text and keeps document, page, and subject metadata.</span></div>
+                <div class="trace-mini-step"><strong>Chunk</strong><span>Text is split by chapter/section-aware chunks with overlap.</span></div>
+                <div class="trace-mini-step"><strong>Embed</strong><span>Qwen embedding turns each chunk into a 1024-dimensional vector.</span></div>
+                <div class="trace-mini-step"><strong>Store</strong><span>SQL stores app metadata; ChromaDB stores chunk text, vector, and retrieval metadata.</span></div>
+            </div>
+            <div class="trace-section-label">Runtime trace for this question</div>
             <div class="trace-flow">
                 <section class="trace-stage" data-step="01">
                     <div class="trace-stage-head">
-                        <div class="trace-stage-title"><i class="bi bi-chat-dots"></i><div>Question and scope<small>Classify intent, subject, document filter, and safety decision.</small></div></div>
+                        <div class="trace-stage-title"><i class="bi bi-chat-dots"></i><div>Intent gate and scope<small>Decides whether this is a document-learning question before touching ChromaDB.</small></div></div>
                         <span class="trace-stage-status">${escapeHtml(scope.decision || 'checked')}</span>
                     </div>
                     <div class="trace-metrics">
@@ -1450,7 +1493,7 @@
                 </section>
                 <section class="trace-stage" data-step="02">
                     <div class="trace-stage-head">
-                        <div class="trace-stage-title"><i class="bi bi-pencil-square"></i><div>Rewrite and memory<small>Turn short follow-up questions into a standalone retrieval query.</small></div></div>
+                        <div class="trace-stage-title"><i class="bi bi-pencil-square"></i><div>Rewrite and memory<small>Turns follow-ups into standalone retrieval queries and preserves topic scope.</small></div></div>
                         <span class="trace-stage-status">${escapeHtml(query.rewritten ? 'rewritten' : 'ready')}</span>
                     </div>
                     <div class="trace-metrics">
@@ -1462,14 +1505,14 @@
                 </section>
                 <section class="trace-stage" data-step="03">
                     <div class="trace-stage-head">
-                        <div class="trace-stage-title"><i class="bi bi-search"></i><div>Retriever: parallel search<small>Vector, keyword, and metadata search run at the same time.</small></div></div>
+                        <div class="trace-stage-title"><i class="bi bi-search"></i><div>Parallel retrieval loop<small>Each round runs vector, keyword, and metadata search, then merges candidates.</small></div></div>
                         <span class="trace-stage-status ${retrievalSkipped ? 'skip' : ''}">${retrievalSkipped ? 'skipped' : `${rounds.length} round${rounds.length === 1 ? '' : 's'}`}</span>
                     </div>
                     ${renderTraceRounds(rounds, retrieval)}
                 </section>
                 <section class="trace-stage" data-step="04">
                     <div class="trace-stage-head">
-                        <div class="trace-stage-title"><i class="bi bi-filter-square"></i><div>Rerank and select context<small>RRF/scoring ranks retrieved chunks; only selected chunks enter the LLM context window.</small></div></div>
+                        <div class="trace-stage-title"><i class="bi bi-filter-square"></i><div>Rerank and context window<small>RRF/scoring ranks retrieved chunks; only selected chunks enter the LLM context.</small></div></div>
                         <span class="trace-stage-status ${contexts.length ? '' : 'skip'}">${contexts.length ? `${contexts.length} chunks` : 'none'}</span>
                     </div>
                     <div class="trace-loop-note">Current demo uses RRF/scoring for reranking. A heavier cross-encoder reranker can be enabled later, but it is not on by default for this 4GB VRAM setup.</div>

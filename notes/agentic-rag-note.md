@@ -141,7 +141,7 @@ The final answer uses the local LLM. Planner/checker can use `qwen3:1.7b` when a
 
 The intent gate is important for demo safety. Inputs that are not document-learning questions, such as small talk, random text, weather, or prompt-injection attempts, skip retrieval and return a direct safe response with no citation.
 
-The chat UI also exposes the trace through `AI Circuit Live`: scope, rewrite, vector/keyword/metadata search, rerank/context selection, local answer model, and citations.
+The chat UI also exposes the trace through `AI Circuit Live`. The compact panel shows the current path through scope, rewrite, parallel retrieval, context selection, local answer model, and citations. The detail modal expands this into a system map: indexing reference first, then the runtime question trace with retrieval rounds, branch timings, candidate counts, selected chunks, confidence, and citation decisions. This is operational trace metadata only; it does not expose hidden prompts or chain-of-thought.
 
 ## Why It Helps EduChatbot
 

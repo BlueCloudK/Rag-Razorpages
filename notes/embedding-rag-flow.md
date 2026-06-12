@@ -23,6 +23,8 @@ User question
 -> generate grounded answer with sources
 ```
 
+The chat UI visualizes this runtime path in `AI Circuit Live`. The compact panel shows the main path; the details modal shows the same path as a system map with indexing reference, retrieval rounds, branch timings, candidate counts, selected evidence, model, confidence, and citation decisions.
+
 ## Upload And Indexing
 
 When a lecturer uploads a PDF, DOCX, or PPTX:
@@ -79,6 +81,23 @@ When the user asks a question:
 5. The system merges candidates with RRF/scoring and selects the best chunks.
 6. The best chunks are used as context for the answer model.
 
+The trace shown in the UI is operational metadata:
+
+```text
+Question
+-> Scope/intent decision
+-> Rewrite/history
+-> Vector branch
+-> Keyword branch
+-> Metadata branch
+-> RRF/scoring merge
+-> Context window
+-> Local LLM
+-> Citations
+```
+
+If the intent gate decides the message is not a learning/document question, the retrieval branches are skipped. This is why random chat, weather questions, prompt-injection attempts, or vague text should not produce fake document sources.
+
 ## Answer Generation
 
 The answer model is:
@@ -119,4 +138,4 @@ Then run the app and upload documents again.
 
 ## Simple Explanation For Presentation
 
-EduChatbot uses RAG, not fine-tuning. Uploaded documents are split into chunks and embedded with `Qwen/Qwen3-Embedding-0.6B`. The vectors are stored in ChromaDB. When a user asks a question, the system first checks intent, rewrites follow-ups when needed, retrieves with vector/keyword/metadata search, reranks selected chunks, and uses `gemma3:4b` to generate an answer grounded in those chunks. If the question is not about the indexed learning material, retrieval is skipped and no source is attached.
+EduChatbot uses RAG, not fine-tuning. Uploaded documents are split into chunks and embedded with `Qwen/Qwen3-Embedding-0.6B`. The vectors are stored in ChromaDB. When a user asks a question, the system first checks intent, rewrites follow-ups when needed, retrieves with vector/keyword/metadata search, reranks selected chunks, and uses `gemma3:4b` to generate an answer grounded in those chunks. If the question is not about the indexed learning material, retrieval is skipped and no source is attached. The `AI Circuit Live` panel shows this process visually so a teacher can see whether the system used document evidence or blocked the question safely.
