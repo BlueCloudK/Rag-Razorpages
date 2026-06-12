@@ -87,6 +87,17 @@ ollama pull qwen3:1.7b
 
 The shared AI service uses structured chunking, `Qwen/Qwen3-Embedding-0.6B` on CUDA for embeddings, ChromaDB for vector storage, `qwen3:1.7b` as a small planner/checker with rule-based fallback, and `gemma3:4b` as the primary local answer model. `qwen2.5:3b` is kept as answer fallback. On this demo machine PyTorch CUDA sees the GTX 1650, so indexing can use the GPU. If another machine is CPU-only, switch `EmbeddingModel` back to `intfloat/multilingual-e5-base` and `EmbeddingDevice` to `cpu`. Agentic RAG is limited to two retrieval rounds and three sub-queries.
 
+Before retrieval, the AI service runs an intent/document gate. Only document-learning questions enter RAG. Small talk, random text, weather questions, prompt injection, and vague follow-ups without history are answered directly with no ChromaDB search and no fake sources. Short follow-up questions with history are rewritten into standalone queries and keep the previous document/topic scope; for example, after a UML question, `chi tiet hon` stays scoped to Gomaa UML chunks instead of drifting into DDIA.
+
+Retrieval uses three lightweight branches in parallel:
+
+```text
+Vector search + Keyword/BM25 search + Metadata search
+-> RRF/scoring rerank
+-> selected context chunks
+-> local answer model
+```
+
 Chunk metadata includes `chapter_number`, `chapter_title`, `section_number`, `section_title`, `page_number`, and `content_zone`. Chapter and outline questions use this metadata first, so the chatbot avoids using table-of-contents, appendix, references, or answer-key chunks as evidence for chapter content.
 
 ChromaDB is runtime development data; when embedding or chunking changes, stop the web app/Python service, delete `AIServices/AiService/chroma_db`, and re-index the documents.
@@ -124,19 +135,34 @@ Run selected cases quickly:
 python .\run_demo_benchmark.py --subject-id 1007 --ids ambiguous_wc_vi,conflict_gomaa_ch2_vi,duplicate_gomaa_ch2_same_content_vi
 ```
 
-Benchmark cases are in `AIServices/AiService/data/demo_benchmark_cases.json`; runtime reports are written to `AIServices/AiService/data/benchmark_results/` and ignored by Git. The latest verified run passed `50/50` demo cases, including conflict handling, duplicate content grouping, same-name duplicate import handling, ambiguous acronym guards, prompt-injection refusal, wrong-source guards, and out-of-scope refusal.
+Benchmark cases are in `AIServices/AiService/data/demo_benchmark_cases.json`; runtime reports are written to `AIServices/AiService/data/benchmark_results/` and ignored by Git. The benchmark set currently contains `59` cases. Earlier full verification passed the original `50/50` demo set; newer targeted checks passed `7/7` for small-talk/non-document gating and `2/2` for UML follow-up scope. The cases include conflict handling, duplicate content grouping, same-name duplicate import handling, ambiguous acronym guards, prompt-injection refusal, wrong-source guards, non-document intent gating, scoped follow-ups, and out-of-scope refusal.
+
+## AI Circuit Live
+
+The chat workspace includes a right-side `AI Circuit Live` panel. It is designed for demo and debugging, not just decoration. It shows:
+
+- intent/scope decision;
+- rewritten query and whether history was used;
+- vector, keyword, and metadata branches running in parallel;
+- RRF/rerank and selected context chunks;
+- local model, confidence, fallback status;
+- citations actually attached to the answer.
+
+The detail modal presents the same trace as a vertical system map. Blocked questions show skipped retrieval nodes, making it clear that no document evidence was used.
 
 ## RAG Capability Matrix
 
 | Capability | Current behavior |
 | --- | --- |
 | Chapter and outline questions | Uses chapter-aware metadata before normal retrieval. |
-| Follow-up questions | Rewrites short follow-ups using history and small planner/rule fallback. |
+| Follow-up questions | Rewrites short follow-ups using history and small planner/rule fallback, while preserving previous document/topic scope. |
 | Citation | Returns source files plus chunk metadata for UI source grouping. |
 | Conflict awareness | Shows original/modified answers separately and warns about conflict. |
 | Duplicate awareness | Uses `content_hash` to send one representative chunk to the LLM while listing all duplicate sources. |
 | Same-name duplicate upload | Normal web upload blocks duplicate file names inside the same subject. AI import still labels same-name duplicates by document id. |
 | Safety guards | Blocks or clarifies prompt injection, vague acronyms, random input, and out-of-scope questions without fake citations. |
+| Non-document intent gate | Skips retrieval for questions that are not about learning material, so random chat does not produce fake document citations. |
+| AI trace visibility | Shows retrieval branches, rerank/context selection, answer model, confidence, and citations in the chat UI. |
 
 ## Information Quality Evaluation
 
@@ -151,7 +177,7 @@ The benchmark evaluates practical demo quality rather than general intelligence:
 
 ## Current Limitations
 
-- The `50/50` score is scoped to the curated demo set.
+- Benchmark pass rates are scoped to the curated demo set.
 - Local generation can be slow on small hardware.
 - OCR/scanned PDFs can still hurt chunk quality.
 - Conflict handling does not decide the official source yet; add trusted metadata if that becomes a requirement.

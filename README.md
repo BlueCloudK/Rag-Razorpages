@@ -102,6 +102,9 @@ The app seeds demo accounts in Development:
 - The modified Gomaa PDF intentionally contains wrong information. It is used to demonstrate conflict-aware RAG: when original and modified sources disagree, the chatbot shows both answers grouped by source and says the sources conflict instead of deciding which one is correct.
 - If another machine does not have CUDA/PyTorch GPU support, switch `EmbeddingModel` back to `intfloat/multilingual-e5-base` and `EmbeddingDevice` to `cpu` in `PresentationLayer/appsettings.json`.
 - Lightweight Agentic RAG uses `qwen3:1.7b` as a small planner/checker with rule-based fallback. It rewrites short follow-up questions, creates up to three retrieval queries, checks whether evidence is sufficient, and can trigger a second retrieval round.
+- A rule-based intent/document gate runs before retrieval. Non-document turns such as small talk, random text, weather, prompt-injection attempts, or vague follow-ups without history return a direct safe response with no ChromaDB search and no fake citation.
+- Short follow-up questions keep the previous topic and document scope. For example, after asking about UML, `chi tiet hon` is rewritten from history and remains scoped to the Gomaa UML evidence instead of drifting into DDIA chunks.
+- Hybrid retrieval runs vector, keyword, and metadata branches in parallel, then merges candidates with RRF/scoring before the selected context is sent to the local answer model.
 - `gemma3:4b` writes the final answer, with `qwen2.5:3b` as fallback. The tested `qwen3:4b` tag can return thinking text or empty responses through Ollama on this machine, so it is not the default demo answer model.
 - Ollama is used for local answer generation.
 - ChromaDB is runtime development data. When embedding model, chunking, or metadata rules change, delete `AIServices/AiService/chroma_db` and re-index the documents.
@@ -138,19 +141,34 @@ Run selected cases quickly:
 python .\run_demo_benchmark.py --subject-id 1007 --ids ambiguous_wc_vi,conflict_gomaa_ch2_vi,duplicate_gomaa_ch2_same_content_vi
 ```
 
-Benchmark cases live in `AIServices/AiService/data/demo_benchmark_cases.json`. Reports are written to `AIServices/AiService/data/benchmark_results/` and are ignored by Git because they are runtime evidence files. The latest verified run on this machine passed `50/50` demo cases. It covers document listing, chapter outline, chapter summaries, section listing, follow-up questions, source conflict, duplicate content, same-name duplicate import, out-of-scope refusal, prompt-injection refusal, ambiguous acronym guards, wrong-source guards, and multi-document comparison.
+Benchmark cases live in `AIServices/AiService/data/demo_benchmark_cases.json`. Reports are written to `AIServices/AiService/data/benchmark_results/` and are ignored by Git because they are runtime evidence files. The current benchmark set contains `59` cases. Earlier full verification passed the original `50/50` demo set; after that, extra guard cases were added for non-document intent and UML follow-up scope. The latest targeted verification passed the newly changed groups: `7/7` for small-talk/non-document gating plus a real Gomaa chapter question, and `2/2` for UML plus follow-up scope. The benchmark covers document listing, chapter outline, chapter summaries, section listing, follow-up questions, source conflict, duplicate content, same-name duplicate import, out-of-scope refusal, prompt-injection refusal, ambiguous acronym guards, wrong-source guards, non-document intent gating, and multi-document comparison.
+
+## AI Circuit Live
+
+The chat page includes an `AI Circuit Live` panel for demonstrations. It shows how each question moves through the system:
+
+```text
+Question -> Scope -> Rewrite
+         -> Vector / Keyword / Metadata search in parallel
+         -> Rerank/RRF -> Context
+         -> Local LLM -> Citations
+```
+
+The compact panel shows status, intent, retrieval rounds, evidence count, and source count. The detail modal expands the same trace as a vertical system map with branch timings, candidate counts, selected chunks, confidence, model name, and citation decisions. If the intent gate blocks a question, the retrieval nodes are marked skipped/blocked instead of pretending that ChromaDB was used.
 
 ## RAG Capability Matrix
 
 | Capability | Current behavior |
 | --- | --- |
 | Chapter and outline questions | Uses chapter-aware metadata before normal retrieval, so it can answer which chapters/sections exist in the indexed sample. |
-| Follow-up questions | Uses chat history and the small planner/fallback rules to rewrite short follow-ups such as `liệt kê ra giúp tôi`. |
+| Follow-up questions | Uses chat history and rule/small-planner fallback to rewrite short follow-ups such as `liet ke ra giup toi` or `chi tiet hon`, while keeping the previous topic/document scope. |
 | Citation | Returns source files and chunk metadata. The UI groups sources instead of showing raw file tags only. |
 | Conflict awareness | If original and modified variants disagree, the answer is grouped by source and explicitly warns about conflict. It does not decide which source is true unless trusted metadata is added later. |
 | Duplicate awareness | Identical chunks get `content_hash` metadata. Retrieval sends one representative chunk to the LLM, but citations list all files/doc ids containing the same content. |
 | Same-name duplicate handling | Normal web upload rejects another file with the same name in the same subject. The AI service still handles same-name duplicate imports safely by including document ids in duplicate source labels. |
 | Safety guards | Prompt injection, random/gibberish input, weather/shopping/creative requests, and weak ambiguous acronym questions are blocked or clarified without fake sources. |
+| Non-document intent gate | Questions that do not look like learning/document questions do not run retrieval and do not show source citations. |
+| AI trace visibility | The chat UI visualizes intent, rewrite, parallel retrieval branches, rerank/context selection, local model generation, and citation attachment. |
 
 ## Information Quality Evaluation
 
@@ -165,7 +183,7 @@ The benchmark does not prove the chatbot is perfect; it proves the current demo 
 
 ## Current Limitations
 
-- The `50/50` score is for the curated demo set, not a guarantee for every textbook or OCR quality.
+- Benchmark pass rates are for the curated demo set, not a guarantee for every textbook or OCR quality.
 - Local models can be slow, especially when `gemma3:4b` is asked to synthesize long answers.
 - Scanned PDFs or badly extracted text can still produce poor chunks.
 - The conflict policy reports disagreement; it does not know which document is official unless a future `trusted=true` metadata rule is added.

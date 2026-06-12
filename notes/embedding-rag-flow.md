@@ -14,9 +14,12 @@ Upload document
 -> store chunks, vectors, and metadata in ChromaDB
 
 User question
+-> intent/document gate
+-> rewrite short follow-up if needed
 -> embed question
--> retrieve related chunks
--> send selected chunks to qwen3:4b
+-> retrieve related chunks with vector + keyword + metadata search
+-> rerank/merge candidates
+-> send selected chunks to gemma3:4b
 -> generate grounded answer with sources
 ```
 
@@ -69,11 +72,11 @@ embedding_model
 
 When the user asks a question:
 
-1. The question is embedded with the same embedding model.
-2. ChromaDB compares the question vector with document chunk vectors.
-3. The closest chunks are retrieved.
-4. Keyword search also runs to catch exact terms such as chapter names, file names, and technical keywords.
-5. The system combines vector search and keyword search.
+1. The intent gate checks whether the input is a document-learning question.
+2. Short follow-ups are rewritten from chat history when possible.
+3. The question is embedded with the same embedding model.
+4. Vector search, keyword/BM25 search, and metadata search run in parallel.
+5. The system merges candidates with RRF/scoring and selects the best chunks.
 6. The best chunks are used as context for the answer model.
 
 ## Answer Generation
@@ -81,7 +84,7 @@ When the user asks a question:
 The answer model is:
 
 ```text
-qwen3:4b
+gemma3:4b
 ```
 
 It receives only the retrieved context, not the whole document.
@@ -116,4 +119,4 @@ Then run the app and upload documents again.
 
 ## Simple Explanation For Presentation
 
-EduChatbot uses RAG, not fine-tuning. Uploaded documents are split into chunks and embedded with `Qwen/Qwen3-Embedding-0.6B`. The vectors are stored in ChromaDB. When a user asks a question, the system embeds the question, retrieves the most relevant chunks, and uses `qwen3:4b` to generate an answer grounded in those chunks.
+EduChatbot uses RAG, not fine-tuning. Uploaded documents are split into chunks and embedded with `Qwen/Qwen3-Embedding-0.6B`. The vectors are stored in ChromaDB. When a user asks a question, the system first checks intent, rewrites follow-ups when needed, retrieves with vector/keyword/metadata search, reranks selected chunks, and uses `gemma3:4b` to generate an answer grounded in those chunks. If the question is not about the indexed learning material, retrieval is skipped and no source is attached.

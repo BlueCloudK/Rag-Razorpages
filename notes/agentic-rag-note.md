@@ -109,7 +109,7 @@ Recommended limits:
 max_retrieval_rounds = 2
 max_sub_queries = 3
 final_chunks = 3-5
-LLM = qwen3:4b
+LLM = gemma3:4b
 Embedding = Qwen/Qwen3-Embedding-0.6B
 Reranker = optional CPU
 ```
@@ -124,19 +124,24 @@ RAG_AGENTIC_MAX_ROUNDS = 2
 RAG_AGENTIC_MAX_SUBQUERIES = 3
 ```
 
-The planner and context checker are rule-based instead of LLM-based. This keeps the workflow cheap for a 4GB VRAM machine:
+The current workflow combines an intent gate, rule-based guards, optional `qwen3:1.7b` planner/checker calls, and rule fallback. This keeps the workflow usable on a 4GB VRAM machine:
 
 ```text
 question
--> rule-based query planner
--> vector + keyword retrieval for each planned query
--> merge ranked chunks
--> rule-based context sufficiency check
+-> intent/document gate
+-> short follow-up rewrite from history
+-> vector + keyword + metadata retrieval branches in parallel
+-> merge ranked chunks with RRF/scoring
+-> context sufficiency check
 -> optional second retrieval round
--> qwen3:4b final answer
+-> gemma3:4b final answer
 ```
 
-Only the final answer calls the local LLM. The planner/checker do not load another model.
+The final answer uses the local LLM. Planner/checker can use `qwen3:1.7b` when available, but rule fallback is always kept so chat does not crash if the small model is missing or slow.
+
+The intent gate is important for demo safety. Inputs that are not document-learning questions, such as small talk, random text, weather, or prompt-injection attempts, skip retrieval and return a direct safe response with no citation.
+
+The chat UI also exposes the trace through `AI Circuit Live`: scope, rewrite, vector/keyword/metadata search, rerank/context selection, local answer model, and citations.
 
 ## Why It Helps EduChatbot
 

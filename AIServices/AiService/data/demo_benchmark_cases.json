@@ -1102,5 +1102,226 @@
     "language": "vi",
     "expected_behavior": "answer",
     "expected_duplicate": true
+  },
+  {
+    "id": "document_summary_vi_history_not_chapter",
+    "question": "tóm tắt các ý chính của tài liệu",
+    "history": [
+      {
+        "role": "User",
+        "content": "chương 6 nói gì?"
+      },
+      {
+        "role": "Bot",
+        "content": "File mẫu hiện chỉ có chương 1 và chương 2."
+      }
+    ],
+    "expected_sources": [
+      "sample-gomaa-software-modeling-ch1-ch2.pdf",
+      "sample-ddia-ch1-ch2.pdf"
+    ],
+    "expected_chapters": [
+      1,
+      2
+    ],
+    "must_include": [
+      "tóm tắt",
+      "sample-gomaa",
+      "sample-ddia"
+    ],
+    "must_not_include": [
+      "chương 6",
+      "chưa thấy chương 6",
+      "không trả lời để tránh bịa nguồn"
+    ],
+    "language": "vi",
+    "expected_behavior": "answer"
+  },
+  {
+    "id": "document_summary_en_history_not_chapter",
+    "question": "Summarize the main ideas in this document",
+    "history": [
+      {
+        "role": "User",
+        "content": "What is chapter 6 about?"
+      },
+      {
+        "role": "Bot",
+        "content": "The indexed sample only has chapters 1 and 2."
+      }
+    ],
+    "expected_sources": [
+      "sample-gomaa-software-modeling-ch1-ch2.pdf",
+      "sample-ddia-ch1-ch2.pdf"
+    ],
+    "expected_chapters": [
+      1,
+      2
+    ],
+    "must_include": [
+      "source-by-source summary",
+      "sample-gomaa",
+      "sample-ddia"
+    ],
+    "must_not_include": [
+      "chapter 6",
+      "I do not see chapter 6",
+      "will not invent"
+    ],
+    "language": "en",
+    "expected_behavior": "answer"
+  },
+  {
+    "id": "small_talk_self_praise_vi",
+    "question": "tao dep trai",
+    "history": [],
+    "expected_sources": [],
+    "expected_chapters": [],
+    "must_include": [
+      "khong can tra tai lieu"
+    ],
+    "must_not_include": [
+      "sample-gomaa",
+      "sample-ddia",
+      "Sources used",
+      "chapter",
+      "chuong"
+    ],
+    "language": "vi",
+    "expected_behavior": "refuse"
+  },
+  {
+    "id": "small_talk_feeling_vi",
+    "question": "toi buon qua",
+    "history": [],
+    "expected_sources": [],
+    "expected_chapters": [],
+    "must_include": [
+      "khong can tra tai lieu"
+    ],
+    "must_not_include": [
+      "sample-gomaa",
+      "sample-ddia",
+      "Sources used",
+      "chapter",
+      "chuong"
+    ],
+    "language": "vi",
+    "expected_behavior": "refuse"
+  },
+  {
+    "id": "small_talk_ok_haha_vi",
+    "question": "ok haha",
+    "history": [],
+    "expected_sources": [],
+    "expected_chapters": [],
+    "must_include": [
+      "khong can tra tai lieu"
+    ],
+    "must_not_include": [
+      "sample-gomaa",
+      "sample-ddia",
+      "Sources used",
+      "chapter",
+      "chuong"
+    ],
+    "language": "vi",
+    "expected_behavior": "refuse"
+  },
+  {
+    "id": "non_document_personal_opinion_vi",
+    "question": "may thay tao the nao",
+    "history": [],
+    "expected_sources": [],
+    "expected_chapters": [],
+    "must_include": [
+      "khong chay retrieval"
+    ],
+    "must_not_include": [
+      "sample-gomaa",
+      "sample-ddia",
+      "Sources used",
+      "chapter",
+      "chuong"
+    ],
+    "language": "vi",
+    "expected_behavior": "refuse",
+    "expected_intent": "non_document_question",
+    "expected_retrieval_strategy": "blocked_non_document_intent",
+    "expect_no_sources": true
+  },
+  {
+    "id": "non_document_random_feeling_vi",
+    "question": "hom nay toi hoi met",
+    "history": [],
+    "expected_sources": [],
+    "expected_chapters": [],
+    "must_include": [
+      "khong chay retrieval"
+    ],
+    "must_not_include": [
+      "sample-gomaa",
+      "sample-ddia",
+      "Sources used",
+      "chapter",
+      "chuong"
+    ],
+    "language": "vi",
+    "expected_behavior": "refuse",
+    "expected_intent": "non_document_question",
+    "expected_retrieval_strategy": "blocked_non_document_intent",
+    "expect_no_sources": true
+  },
+  {
+    "id": "non_document_noise_vi",
+    "question": "abcxyz",
+    "history": [],
+    "expected_sources": [],
+    "expected_chapters": [],
+    "must_include": [
+      "khong chay retrieval"
+    ],
+    "must_not_include": [
+      "sample-gomaa",
+      "sample-ddia",
+      "Sources used",
+      "chapter",
+      "chuong"
+    ],
+    "language": "vi",
+    "expected_behavior": "refuse",
+    "expected_intent": "non_document_question",
+    "expected_retrieval_strategy": "blocked_non_document_intent",
+    "expect_no_sources": true
+  },
+  {
+    "id": "followup_uml_more_stays_gomaa_vi",
+    "question": "chi tiet hon dk",
+    "history": [
+      {
+        "role": "user",
+        "content": "UML la gi"
+      },
+      {
+        "role": "assistant",
+        "content": "UML là một tiêu chuẩn được sử dụng để mô tả phần mềm trước khi lập trình."
+      }
+    ],
+    "expected_sources": [
+      "sample-gomaa-software-modeling-ch1-ch2.pdf"
+    ],
+    "expected_chapters": [],
+    "must_include": [
+      "UML"
+    ],
+    "must_not_include": [
+      "sample-ddia",
+      "Data Models",
+      "database query",
+      "Chuong",
+      "Minh"
+    ],
+    "language": "vi",
+    "expected_behavior": "answer"
   }
 ]
