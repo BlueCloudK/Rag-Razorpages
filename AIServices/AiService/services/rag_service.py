@@ -571,7 +571,7 @@ class RagService:
     def get_query_chapter_numbers(self, query):
         normalized = self.normalize_text(query)
         numbers = []
-        for match in re.finditer(r"\b(?:chapter|chuong)\s*([0-9]{1,2})\b", normalized):
+        for match in re.finditer(r"\b(?:chapter|chuong+)\s*([0-9]{1,2})\b", normalized):
             value = int(match.group(1))
             if 1 <= value <= 40 and value not in numbers:
                 numbers.append(value)
@@ -780,9 +780,12 @@ class RagService:
 
         prompt_injection_terms = [
             "bo qua tai lieu", "ignore sources", "ignore source", "ignore documents",
-            "ignore the documents", "tu tra loi", "khong can nguon", "khong can tai lieu",
+            "ignore the documents", "ignore citations", "ignore citation", "ignore evidence",
+            "answer from your own knowledge", "use your own knowledge", "without citations",
+            "without sources", "without evidence", "tu tra loi", "khong can nguon", "khong can tai lieu",
             "in prompt he thong", "prompt he thong", "system prompt", "luat noi bo",
-            "noi quy noi bo", "reveal prompt", "developer message", "hidden instruction"
+            "noi quy noi bo", "reveal prompt", "developer message", "hidden instruction",
+            "hidden context", "internal rule", "internal rules"
         ]
         if any(term in normalized for term in prompt_injection_terms):
             return {
@@ -884,7 +887,7 @@ class RagService:
 
         short_followup_terms = [
             "liet ke ra di", "liet ke ra i", "liet ke ra giup toi", "noi tiep", "giai thich them",
-            "giai thich ky hon", "so sanh di", "cai do la gi", "phan do la gi",
+            "giai thich ky hon", "noi ky hon", "noi ki hon", "so sanh di", "cai do la gi", "phan do la gi",
             "list them", "continue", "explain more", "compare it"
         ]
         if not history and any(term == normalized or normalized.startswith(term) for term in short_followup_terms):
@@ -1262,7 +1265,10 @@ class RagService:
             "tom tat tai lieu", "tom tat cac y chinh", "cac y chinh cua tai lieu",
             "y chinh cua tai lieu", "noi dung chinh cua tai lieu", "document summary",
             "summary of this document", "main ideas in this document",
-            "main ideas of this document", "summarize the main ideas"
+            "main ideas of this document", "summarize the main ideas",
+            "file gomaa hien co noi dung gi", "file ddia hien co noi dung gi",
+            "file nay hien co noi dung gi", "file nay co noi dung gi",
+            "file gomaa co noi dung gi", "file ddia co noi dung gi"
         ]
         return any(term in normalized for term in summary_terms)
 
@@ -1270,13 +1276,15 @@ class RagService:
         normalized = self.normalize_text(query).strip()
         followup_terms = [
             "liet ke ra", "liet ke ra di", "noi tiep", "giai thich them",
-            "giai thich ky hon", "ro hon", "chi tiet hon", "so voi chuong 1", "so voi chuong 2",
+            "giai thich ky hon", "noi ky hon", "noi ki hon", "ro hon", "chi tiet hon", "so voi chuong 1", "so voi chuong 2",
             "list them", "continue", "explain more", "more detail", "compare with chapter"
         ]
         return len(normalized.split()) <= 6 and any(term == normalized or normalized.startswith(term) for term in followup_terms)
 
     def is_conflict_sensitive_query(self, query):
         normalized = self.normalize_text(query)
+        if any(term in normalized for term in ["so voi chuong", "compare with chapter"]):
+            return False
         return any(term in normalized for term in [
             "khac nhau", "mau thuan", "conflict", "different", "compare",
             "use case", "class diagram", "database normalization", "normalization",
@@ -1658,7 +1666,7 @@ class RagService:
         if not previous:
             return ""
         normalized = self.normalize_text(query)
-        if any(term in normalized for term in ["chi tiet", "giai thich", "ro hon", "explain", "more detail"]):
+        if any(term in normalized for term in ["chi tiet", "giai thich", "noi ky", "noi ki", "ro hon", "explain", "more detail"]):
             suffix = "giải thích chi tiết hơn" if self.is_vietnamese_query(query) else "explain in more detail"
         elif any(term in normalized for term in ["liet ke", "list"]):
             suffix = "liệt kê các ý/mục liên quan" if self.is_vietnamese_query(query) else "list the related points"
@@ -3153,7 +3161,9 @@ Answer:
                 checker={"sufficient": True, "confidence": document_list.get("confidence", 1.0), "reasons": ["Answered from indexed document metadata."], "checker": "metadata"}
             )
 
-        document_summary = self.try_answer_document_summary_query(query, subject_id, document_ids, history)
+        metadata_query = self.rewrite_short_followup_from_history(query, history) or query
+
+        document_summary = self.try_answer_document_summary_query(metadata_query, subject_id, document_ids, history)
         if document_summary:
             return self.with_processing_trace(
                 document_summary,
@@ -3166,7 +3176,7 @@ Answer:
                 checker={"sufficient": True, "confidence": document_summary.get("confidence", 1.0), "reasons": ["Answered from document-level metadata and representative chunks."], "checker": "metadata"}
             )
 
-        known_term = self.try_answer_known_term_query(query, subject_id, document_ids)
+        known_term = self.try_answer_known_term_query(metadata_query, subject_id, document_ids)
         if known_term:
             return self.with_processing_trace(
                 known_term,
@@ -3178,7 +3188,7 @@ Answer:
                 checker={"sufficient": True, "confidence": known_term.get("confidence", 1.0), "reasons": ["Answered from exact known-term evidence in indexed chunks."], "checker": "metadata"}
             )
 
-        outline_answer = self.try_answer_outline_query(query, subject_id, document_ids, history)
+        outline_answer = self.try_answer_outline_query(metadata_query, subject_id, document_ids, history)
         if outline_answer:
             return self.with_processing_trace(
                 outline_answer,
@@ -3191,7 +3201,7 @@ Answer:
                 checker={"sufficient": True, "confidence": outline_answer.get("confidence", 1.0), "reasons": ["Answered from chapter/outline metadata."], "checker": "metadata"}
             )
 
-        duplicate_answer = self.try_answer_duplicate_query(query, subject_id, document_ids, history)
+        duplicate_answer = self.try_answer_duplicate_query(metadata_query, subject_id, document_ids, history)
         if duplicate_answer:
             return self.with_processing_trace(
                 duplicate_answer,
@@ -3204,7 +3214,7 @@ Answer:
                 checker={"sufficient": True, "confidence": duplicate_answer.get("confidence", 1.0), "reasons": ["Identical content was grouped; one representative chunk was used."], "checker": "duplicate-policy"}
             )
 
-        conflict_answer = self.try_answer_source_conflict_query(query, subject_id, document_ids, history)
+        conflict_answer = self.try_answer_source_conflict_query(metadata_query, subject_id, document_ids, history)
         if conflict_answer:
             return self.with_processing_trace(
                 conflict_answer,
@@ -3217,7 +3227,7 @@ Answer:
                 checker={"sufficient": True, "confidence": conflict_answer.get("confidence", 1.0), "reasons": ["Multiple source variants were compared; no automatic truth winner selected."], "checker": "conflict-policy"}
             )
 
-        chapter_answer = self.try_answer_chapter_query(query, subject_id, document_ids, history)
+        chapter_answer = self.try_answer_chapter_query(metadata_query, subject_id, document_ids, history)
         if chapter_answer:
             return self.with_processing_trace(
                 chapter_answer,
