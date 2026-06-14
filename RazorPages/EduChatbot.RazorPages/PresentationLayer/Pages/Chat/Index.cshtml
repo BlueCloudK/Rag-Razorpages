@@ -107,14 +107,17 @@
         .inspect-panel h4 { margin: 0 0 12px; color: #f1f3f4; font-size: .9rem; font-weight: 800; }
         .inspect-kv { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 8px 12px; color: #cdd3df; font-size: .78rem; }
         .inspect-kv span:first-child { color: #8f96a7; }
-        .pipeline-board { display: grid; gap: 8px; margin-bottom: 12px; }
-        .pipeline-phase { border: 1px solid #2a2a2e; border-radius: 10px; background: #111216; padding: 10px 12px; }
-        .pipeline-phase h4 { margin: 0 0 8px; color: #f1f3f4; font-size: .82rem; font-weight: 800; display: flex; align-items: center; gap: 7px; }
-        .pipeline-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-        .flow-chip { border: 1px solid #29304b; border-radius: 999px; background: #1a1f34; color: #dce2f4; padding: 6px 9px; font-size: .7rem; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
-        .flow-chip span { color: #8ea0ff; font-size: .62rem; text-transform: uppercase; letter-spacing: .04em; }
-        .flow-arrow { color: #596177; font-size: .72rem; }
-        .answer-flow .flow-chip { background: #151b25; border-color: #263848; }
+        .chunking-decision { margin-bottom: 14px; border-color: #314066; background: linear-gradient(180deg, rgba(35,43,72,.76), rgba(18,20,27,.96)); }
+        .chunking-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+        .chunking-selected { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #3f55a7; background: #1d274a; color: #dce4ff; border-radius: 999px; padding: 6px 10px; font-size: .72rem; font-weight: 800; white-space: nowrap; }
+        .chunking-reason { margin: 4px 0 0; color: #aeb6c5; font-size: .76rem; line-height: 1.45; }
+        .chunking-table { display: grid; gap: 8px; }
+        .chunking-row { display: grid; grid-template-columns: minmax(135px, .9fr) 72px repeat(4, 64px) minmax(220px, 1.6fr); gap: 8px; align-items: center; padding: 9px 10px; border: 1px solid #2b3144; border-radius: 9px; background: #11151f; color: #cdd3df; font-size: .72rem; }
+        .chunking-row.header { color: #8f9cff; background: transparent; border: 0; padding-top: 0; padding-bottom: 0; font-size: .62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+        .chunking-row.selected { border-color: #4f67d8; background: #171f3a; box-shadow: inset 3px 0 0 #667eea; }
+        .chunking-row strong { color: #f1f3f4; }
+        .metric-bar { height: 6px; border-radius: 999px; background: #282d3a; overflow: hidden; margin-top: 4px; }
+        .metric-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, #5f7cff, #33d69f); }
         .storage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .storage-card { margin-top: 10px; padding: 12px; border: 1px solid #292d36; border-radius: 9px; background: #171920; color: #aeb6c5; font-size: .76rem; line-height: 1.5; }
         .storage-card strong { color: #e8ebf2; display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
@@ -124,8 +127,13 @@
         .chunk-text { color: #d8dde7; font-size: .8rem; line-height: 1.52; max-height: 104px; overflow: auto; white-space: pre-wrap; }
         .vector-preview { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px; }
         .vector-pill { border: 1px solid #35405f; border-radius: 999px; padding: 3px 7px; color: #b7c0ff; background: #1d2233; font-size: .68rem; }
-        .pipeline-note { margin-top: 8px; color: #8f96a7; font-size: .72rem; line-height: 1.45; }
-        @@media (max-width: 860px) { .inspect-grid, .storage-grid { grid-template-columns: 1fr; } }
+        @@media (max-width: 860px) {
+            .inspect-grid, .storage-grid { grid-template-columns: 1fr; }
+            .chunking-row { grid-template-columns: 1fr 62px 62px; }
+            .chunking-row.header { display: none; }
+            .chunking-row > :nth-child(n+4):nth-child(-n+6) { display: none; }
+            .chunking-row > span:last-child { grid-column: 1 / -1; }
+        }
         
         /* Empty state */
         .empty-hint { text-align: center; padding: 20px 10px; color: #9aa0a6; font-size: 0.85rem; line-height: 1.6; }
@@ -215,7 +223,7 @@
         .trace-legend .ok { background: #81c995; }
         .trace-legend .run { background: #667eea; }
         .trace-legend .skip { background: #f28b82; }
-        .trace-mini-flow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+        .trace-mini-flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
         .trace-mini-step { position: relative; border: 1px solid #293044; border-radius: 11px; background: #101218; padding: 10px; min-height: 78px; }
         .trace-mini-step:not(:last-child)::after { content: ""; position: absolute; right: -8px; top: 50%; width: 8px; height: 2px; background: #3c4f91; box-shadow: 0 0 12px rgba(102,126,234,.35); }
         .trace-mini-step strong { display: block; color: #f3f6ff; font-size: .72rem; margin-bottom: 4px; }
@@ -444,7 +452,7 @@
                                     {
                                         <button type="button"
                                                 class="inspect-btn"
-                                                title="View AI index and answer flow"
+                                                title="View AI index details"
                                                 data-inspect-document-id="@doc.Id"
                                                 data-inspect-file-name="@doc.FileName">
                                             <i class="bi bi-cpu"></i>
@@ -750,7 +758,7 @@
     <div class="inspect-dialog">
         <div class="inspect-head">
             <div>
-                <h3 class="inspect-title"><i class="bi bi-cpu"></i> AI index and answer flow</h3>
+                <h3 class="inspect-title"><i class="bi bi-cpu"></i> AI Index Inspector</h3>
                 <div class="inspect-subtitle" id="inspectorFileName">Document</div>
             </div>
             <button type="button" class="inspect-close" onclick="closeChunkInspector()" aria-label="Close"><i class="bi bi-x-lg"></i></button>
@@ -1469,19 +1477,33 @@
                 <span><i class="run"></i> Retriever: Vector, Keyword, Metadata run together</span>
                 <span><i class="skip"></i> Skipped/blocked: no trusted evidence used</span>
             </div>
-            <div class="trace-section-label">Document indexing reference</div>
+            <div class="trace-section-label">Runtime pipeline map</div>
             <div class="trace-mini-flow">
-                <div class="trace-mini-step"><strong>Upload</strong><span>Lecturer adds PDF, DOCX, PPT, or PPTX into a subject workspace.</span></div>
-                <div class="trace-mini-step"><strong>Extract</strong><span>AI Service extracts text and keeps document, page, and subject metadata.</span></div>
-                <div class="trace-mini-step"><strong>Chunk</strong><span>Text is split by chapter/section-aware chunks with overlap.</span></div>
-                <div class="trace-mini-step"><strong>Embed</strong><span>Qwen embedding turns each chunk into a 1024-dimensional vector.</span></div>
-                <div class="trace-mini-step"><strong>Store</strong><span>SQL stores app metadata; ChromaDB stores chunk text, vector, and retrieval metadata.</span></div>
+                <div class="trace-mini-step"><strong>Question</strong><span>Receives the exact user message for this turn.</span></div>
+                <div class="trace-mini-step"><strong>Scope</strong><span>Classifies intent, subject, document filter, and safety decision.</span></div>
+                <div class="trace-mini-step"><strong>Rewrite</strong><span>Turns follow-up text into a standalone retrieval query when needed.</span></div>
+                <div class="trace-mini-step"><strong>Vector</strong><span>Embeds the query and searches ChromaDB by semantic similarity.</span></div>
+                <div class="trace-mini-step"><strong>Keyword</strong><span>Searches exact terms, BM25/token matches, and chapter words.</span></div>
+                <div class="trace-mini-step"><strong>Metadata</strong><span>Uses file, chapter, variant, duplicate, and source hints.</span></div>
+                <div class="trace-mini-step"><strong>Merge/RRF</strong><span>Merges branches and reranks candidates into one list.</span></div>
+                <div class="trace-mini-step"><strong>Evidence</strong><span>Selects chunks that enter the final context window.</span></div>
+                <div class="trace-mini-step"><strong>LLM + Cite</strong><span>Generates the answer and attaches only used sources.</span></div>
             </div>
             <div class="trace-section-label">Runtime trace for this question</div>
             <div class="trace-flow">
                 <section class="trace-stage" data-step="01">
                     <div class="trace-stage-head">
-                        <div class="trace-stage-title"><i class="bi bi-chat-dots"></i><div>Intent gate and scope<small>Decides whether this is a document-learning question before touching ChromaDB.</small></div></div>
+                        <div class="trace-stage-title"><i class="bi bi-chat-dots"></i><div>Question received<small>The raw message is kept separate from rewritten retrieval queries.</small></div></div>
+                        <span class="trace-stage-status">received</span>
+                    </div>
+                    <div class="trace-metrics">
+                        ${renderTraceMetric('Original message', compactText(query.original || latestCircuitQuestion, 160))}
+                        ${renderTraceMetric('Source', 'current chat session')}
+                    </div>
+                </section>
+                <section class="trace-stage" data-step="02">
+                    <div class="trace-stage-head">
+                        <div class="trace-stage-title"><i class="bi bi-shield-check"></i><div>Intent gate and scope<small>Decides whether this is a document-learning question before touching ChromaDB.</small></div></div>
                         <span class="trace-stage-status">${escapeHtml(scope.decision || 'checked')}</span>
                     </div>
                     <div class="trace-metrics">
@@ -1491,7 +1513,7 @@
                         ${renderTraceMetric('Document filter', asArray(scope.document_filter || scope.document_ids).join(' | ') || 'all indexed docs')}
                     </div>
                 </section>
-                <section class="trace-stage" data-step="02">
+                <section class="trace-stage" data-step="03">
                     <div class="trace-stage-head">
                         <div class="trace-stage-title"><i class="bi bi-pencil-square"></i><div>Rewrite and memory<small>Turns follow-ups into standalone retrieval queries and preserves topic scope.</small></div></div>
                         <span class="trace-stage-status">${escapeHtml(query.rewritten ? 'rewritten' : 'ready')}</span>
@@ -1503,22 +1525,34 @@
                         ${renderTraceMetric('Subject memory used', yesNo(query.subject_memory_used))}
                     </div>
                 </section>
-                <section class="trace-stage" data-step="03">
+                <section class="trace-stage" data-step="04">
                     <div class="trace-stage-head">
-                        <div class="trace-stage-title"><i class="bi bi-search"></i><div>Parallel retrieval loop<small>Each round runs vector, keyword, and metadata search, then merges candidates.</small></div></div>
+                        <div class="trace-stage-title"><i class="bi bi-search"></i><div>Parallel retrieval branches<small>Each round runs vector, keyword, and metadata search before merge.</small></div></div>
                         <span class="trace-stage-status ${retrievalSkipped ? 'skip' : ''}">${retrievalSkipped ? 'skipped' : `${rounds.length} round${rounds.length === 1 ? '' : 's'}`}</span>
                     </div>
                     ${renderTraceRounds(rounds, retrieval)}
                 </section>
-                <section class="trace-stage" data-step="04">
+                <section class="trace-stage" data-step="05">
                     <div class="trace-stage-head">
-                        <div class="trace-stage-title"><i class="bi bi-filter-square"></i><div>Rerank and context window<small>RRF/scoring ranks retrieved chunks; only selected chunks enter the LLM context.</small></div></div>
+                        <div class="trace-stage-title"><i class="bi bi-filter-square"></i><div>Merge / RRF rerank<small>Combines all retrieved candidates and keeps the strongest evidence candidates.</small></div></div>
+                        <span class="trace-stage-status ${retrievalSkipped ? 'skip' : ''}">${retrievalSkipped ? 'skipped' : `${retrieval.selected_count ?? contexts.length} selected`}</span>
+                    </div>
+                    <div class="trace-metrics">
+                        ${renderTraceMetric('Strategy', retrieval.merge?.strategy || retrieval.strategy || 'reciprocal_rank_fusion')}
+                        ${renderTraceMetric('Merged candidates', retrieval.merge?.candidate_count ?? retrieval.candidate_count ?? '-')}
+                        ${renderTraceMetric('Selected candidates', retrieval.merge?.selected_count ?? retrieval.selected_count ?? contexts.length)}
+                        ${renderTraceMetric('Planned queries', asArray(retrieval.planned_queries).join(' | ') || query.rewritten || query.original || '-')}
+                    </div>
+                </section>
+                <section class="trace-stage" data-step="06">
+                    <div class="trace-stage-head">
+                        <div class="trace-stage-title"><i class="bi bi-diagram-3"></i><div>Evidence check and context window<small>Only selected chunks become context for the local answer model.</small></div></div>
                         <span class="trace-stage-status ${contexts.length ? '' : 'skip'}">${contexts.length ? `${contexts.length} chunks` : 'none'}</span>
                     </div>
                     <div class="trace-loop-note">Current demo uses RRF/scoring for reranking. A heavier cross-encoder reranker can be enabled later, but it is not on by default for this 4GB VRAM setup.</div>
                     ${renderTraceEvidenceDetail(contexts)}
                 </section>
-                <section class="trace-stage" data-step="05">
+                <section class="trace-stage" data-step="07">
                     <div class="trace-stage-head">
                         <div class="trace-stage-title"><i class="bi bi-stars"></i><div>Local LLM answer<small>The model receives selected evidence only, then the UI attaches citations.</small></div></div>
                         <span class="trace-stage-status">${escapeHtml(llm.model || trace?.model || 'local')}</span>
@@ -1530,7 +1564,7 @@
                         ${renderTraceMetric('Fallback used', yesNo(llm.fallback_used || trace?.fallbackUsed || trace?.fallback_used))}
                     </div>
                 </section>
-                <section class="trace-stage" data-step="06">
+                <section class="trace-stage" data-step="08">
                     <div class="trace-stage-head">
                         <div class="trace-stage-title"><i class="bi bi-link-45deg"></i><div>Citations<small>Only sources tied to selected evidence are shown to the user.</small></div></div>
                         <span class="trace-stage-status ${sources.length ? '' : 'skip'}">${sources.length ? `${sources.length} source${sources.length === 1 ? '' : 's'}` : 'none'}</span>
@@ -1891,6 +1925,85 @@
     window.openChunkInspector = openChunkInspector;
     window.closeChunkInspector = closeChunkInspector;
 
+    function getMetaValue(meta, camelName, snakeName, fallback = '') {
+        return meta?.[camelName] ?? meta?.[snakeName] ?? fallback;
+    }
+
+    function parseChunkingReport(meta) {
+        const raw = getMetaValue(meta, 'chunkingReport', 'chunking_report', '');
+        if (raw) {
+            try {
+                const parsed = JSON.parse(raw);
+                if (parsed && Array.isArray(parsed.strategies)) {
+                    return parsed;
+                }
+            } catch {
+                // Older indexes may not have the JSON report yet.
+            }
+        }
+
+        const strategy = getMetaValue(meta, 'chunkingStrategy', 'chunking_strategy', 'structured_heading');
+        const score = Number(getMetaValue(meta, 'chunkingScore', 'chunking_score', 0)) || 0;
+        const reason = getMetaValue(meta, 'chunkingReason', 'chunking_reason', 'Stored index was created before full adaptive report metadata.');
+        return {
+            enabled: false,
+            selected_strategy: strategy,
+            selected_score: score,
+            summary: reason,
+            strategies: [{
+                strategy,
+                score,
+                size: 0,
+                integrity: 0,
+                metadata: 0,
+                density: 0,
+                reason
+            }]
+        };
+    }
+
+    function renderMetric(value) {
+        const number = Number(value) || 0;
+        const width = Math.max(0, Math.min(100, number * 100));
+        return `<span>${number.toFixed(2)}</span><div class="metric-bar"><div class="metric-fill" style="width:${width}%"></div></div>`;
+    }
+
+    function renderChunkingDecision(meta) {
+        const report = parseChunkingReport(meta);
+        const selected = report.selected_strategy || report.selectedStrategy || 'structured_heading';
+        const selectedScore = Number(report.selected_score ?? report.selectedScore ?? 0) || 0;
+        const strategies = Array.isArray(report.strategies) ? report.strategies : [];
+        const rows = strategies.map(item => {
+            const name = item.strategy || 'unknown';
+            const selectedClass = name === selected ? ' selected' : '';
+            return `<div class="chunking-row${selectedClass}">
+                <strong>${escapeHtml(name)}</strong>
+                <div>${renderMetric(item.score)}</div>
+                <div>${renderMetric(item.size)}</div>
+                <div>${renderMetric(item.integrity)}</div>
+                <div>${renderMetric(item.metadata)}</div>
+                <div>${renderMetric(item.density)}</div>
+                <span>${escapeHtml(item.reason || '')}</span>
+            </div>`;
+        }).join('');
+
+        return `<div class="inspect-panel chunking-decision">
+            <div class="chunking-header">
+                <div>
+                    <h4><i class="bi bi-scissors"></i> Adaptive chunking decision</h4>
+                    <p class="chunking-reason">${escapeHtml(report.summary || 'The AI Service evaluated chunking strategies before embedding.')}</p>
+                </div>
+                <span class="chunking-selected"><i class="bi bi-check2-circle"></i> ${escapeHtml(selected)} · ${selectedScore.toFixed(2)}</span>
+            </div>
+            <div class="chunking-table">
+                <div class="chunking-row header">
+                    <span>Strategy</span><span>Score</span><span>Size</span><span>Integrity</span><span>Metadata</span><span>Coverage</span><span>Reason</span>
+                </div>
+                ${rows || '<div class="text-secondary">No chunking report metadata found. Re-index this document to generate a full report.</div>'}
+            </div>
+        </div>`;
+    }
+
     function renderChunkInspector(data) {
         const firstChunk = (data.chunks || [])[0] || {};
         const meta = firstChunk.metadata || {};
@@ -1898,6 +2011,8 @@
         const dimensions = firstChunk.embeddingDimensions || firstChunk.embedding_dimensions || 0;
         const subjectScope = meta.subjectId ?? meta.subject_id ?? '-';
         const documentId = data.documentId || data.document_id || meta.documentId || meta.document_id || '';
+        const chunkingStrategy = getMetaValue(meta, 'chunkingStrategy', 'chunking_strategy', 'structured_heading');
+        const chunkingScore = Number(getMetaValue(meta, 'chunkingScore', 'chunking_score', 0)) || 0;
         const chunks = (data.chunks || []).map(chunk => {
             const preview = (chunk.embeddingPreview || []).slice(0, 12)
                 .map(v => `<span class="vector-pill">${Number(v).toFixed(4)}</span>`)
@@ -1921,35 +2036,7 @@
             </div>`;
         }).join('');
 
-        return `<div class="pipeline-board">
-            <div class="pipeline-phase">
-                <h4><i class="bi bi-upload"></i> 1. When a lecturer uploads this document</h4>
-                <div class="pipeline-strip">
-                    <div class="flow-chip"><span>01</span>Extract text</div>
-                    <div class="flow-arrow">→</div>
-                    <div class="flow-chip"><span>02</span>Chunk by section/page</div>
-                    <div class="flow-arrow">→</div>
-                    <div class="flow-chip"><span>03</span>Embed with ${escapeHtml(embeddingModel)}</div>
-                    <div class="flow-arrow">→</div>
-                    <div class="flow-chip"><span>04</span>Store SQL + ChromaDB</div>
-                </div>
-            </div>
-            <div class="pipeline-phase">
-                <h4><i class="bi bi-chat-square-text"></i> 2. When a student asks a question</h4>
-                <div class="pipeline-strip answer-flow">
-                    <div class="flow-chip"><span>Query</span>Rewrite/check</div>
-                    <div class="flow-arrow">→</div>
-                    <div class="flow-chip"><span>Search</span>Vector + keyword</div>
-                    <div class="flow-arrow">→</div>
-                    <div class="flow-chip"><span>Evidence</span>Pick chunks</div>
-                    <div class="flow-arrow">→</div>
-                    <div class="flow-chip"><span>LLM</span>Answer from context</div>
-                    <div class="flow-arrow">→</div>
-                    <div class="flow-chip"><span>Cite</span>Show sources</div>
-                </div>
-                <div class="pipeline-note">The real stored evidence is shown below. Vector preview only shows the first values.</div>
-            </div>
-        </div>
+        return `${renderChunkingDecision(meta)}
         <div class="inspect-grid">
             <div>
                 <div class="inspect-panel">
@@ -1960,6 +2047,7 @@
                         <span>Embedding model</span><strong>${escapeHtml(embeddingModel)}</strong>
                         <span>Vector dimensions</span><strong>${dimensions || 'unknown'}</strong>
                         <span>Chunk config</span><strong>size = 850, overlap = 120</strong>
+                        <span>Chunking strategy</span><strong>${escapeHtml(chunkingStrategy)} (${chunkingScore.toFixed(2)})</strong>
                         <span>Subject scope</span><strong>subject_id = ${subjectScope}</strong>
                         <span>Document metadata</span><strong>document_id = ${escapeHtml(documentId)}</strong>
                         <span>Total chunks</span><strong>${data.total || 0}</strong>

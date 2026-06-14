@@ -100,6 +100,8 @@ Vector search + Keyword/BM25 search + Metadata search
 
 Chunk metadata includes `chapter_number`, `chapter_title`, `section_number`, `section_title`, `page_number`, and `content_zone`. Chapter and outline questions use this metadata first, so the chatbot avoids using table-of-contents, appendix, references, or answer-key chunks as evidence for chapter content.
 
+The AI service also records an adaptive chunking report for every newly indexed document. It compares `structured_heading`, `recursive_document`, and `page_aware`, then stores the selected strategy, score, reason, and tested strategy metrics in ChromaDB metadata. In the document inspector, the `Adaptive chunking decision` panel shows this report so the indexing step is explainable instead of looking like a fixed splitter.
+
 ChromaDB is runtime development data; when embedding or chunking changes, stop the web app/Python service, delete `AIServices/AiService/chroma_db`, and re-index the documents.
 
 ## Demo Benchmark

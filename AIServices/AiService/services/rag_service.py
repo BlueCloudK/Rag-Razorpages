@@ -401,6 +401,8 @@ class RagService:
                 "local_index": int(chunk.get("local_index") or 0),
                 "chunking_strategy": str(chunk.get("chunking_strategy") or "structured_heading")[:80],
                 "chunking_score": float(chunk.get("chunking_score") or 0),
+                "chunking_reason": str(chunk.get("chunking_reason") or "")[:500],
+                "chunking_report": str(chunk.get("chunking_report") or "")[:6000],
                 "content_hash": hash_value,
                 "duplicate_group": hash_value
             }
@@ -423,6 +425,8 @@ class RagService:
             "local_index": 0,
             "chunking_strategy": "unknown",
             "chunking_score": 0.0,
+            "chunking_reason": "",
+            "chunking_report": "",
             "content_hash": hash_value,
             "duplicate_group": hash_value
         }

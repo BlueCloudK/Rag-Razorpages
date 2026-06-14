@@ -47,5 +47,15 @@ namespace ServiceLayer.Models
         public string EmbeddingModel { get; set; } = string.Empty;
         public int ChunkIndex { get; set; }
         public int ChunkLength { get; set; }
+        public int PageNumber { get; set; }
+        public int ChapterNumber { get; set; }
+        public string ChapterTitle { get; set; } = string.Empty;
+        public string SectionTitle { get; set; } = string.Empty;
+        public string SectionPath { get; set; } = string.Empty;
+        public string ContentZone { get; set; } = string.Empty;
+        public string ChunkingStrategy { get; set; } = string.Empty;
+        public double ChunkingScore { get; set; }
+        public string ChunkingReason { get; set; } = string.Empty;
+        public string ChunkingReport { get; set; } = string.Empty;
     }
 }

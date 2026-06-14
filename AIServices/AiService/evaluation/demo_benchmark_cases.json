@@ -1,0 +1,3 @@
+{
+  "note": "Canonical benchmark cases live in ../data/demo_benchmark_cases.json. This placeholder keeps the evaluation package discoverable without duplicating the large case file."
+}

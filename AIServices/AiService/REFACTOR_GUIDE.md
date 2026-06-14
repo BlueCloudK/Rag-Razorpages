@@ -1,10 +1,10 @@
-# AI Service Refactor Guide
+# AI Service Structure Notes
 
-Tài liệu này ghi lại hướng refactor phần Python AI Service nếu sau này muốn tách cấu trúc giống một RAG project production hơn.
+Tài liệu này ghi lại cấu trúc hiện tại của Python AI Service và cách tiếp tục tách module nếu muốn tiến gần hơn tới một RAG project production.
 
-Hiện tại chưa bắt buộc phải refactor lớn vì hệ thống đang ưu tiên demo ổn định. Nếu refactor, phải test lại index, chat, benchmark và web app.
+Hiện tại các package production-style đã được tạo để cấu trúc project rõ hơn. Phần runtime ổn định vẫn chủ yếu nằm trong `services/document_processor.py` và `services/rag_service.py`; các package mới đóng vai trò boundary/facade để sau này tách sâu hơn mà ít phá API.
 
-## 1. Mục tiêu refactor
+## 1. Mục tiêu cấu trúc
 
 Mục tiêu không phải đổi folder cho đẹp, mà là:
 
@@ -15,9 +15,9 @@ Mục tiêu không phải đổi folder cho đẹp, mà là:
 - Dễ giải thích với người khác khi đọc code.
 - Giảm việc `rag_service.py` phải chứa quá nhiều trách nhiệm.
 
-## 2. Cấu trúc đề xuất
+## 2. Cấu trúc hiện tại
 
-Cấu trúc có thể hướng tới:
+AI Service hiện có cấu trúc:
 
 ```text
 AIServices/AiService/
@@ -66,13 +66,28 @@ AIServices/AiService/
    └─ text_normalization.py
 ```
 
-Không cần làm tất cả một lần. Nên tách từng nhóm nhỏ và test ngay sau mỗi lần.
+Ý nghĩa hiện tại:
 
-## 3. Thứ tự refactor an toàn
+- `services/`: runtime chính đang được app dùng trực tiếp.
+- `ingestion/`: boundary cho đọc file và extract units.
+- `chunking/`: boundary cho structured/adaptive chunking.
+- `embeddings/`: boundary cho embedding model.
+- `vectordb/`: boundary cho ChromaDB.
+- `retrieval/`: helper/facade cho vector, keyword, metadata, fusion, rerank.
+- `guards/`: helper/facade cho intent, ambiguity, safety guard.
+- `llm/`: boundary cho Ollama client.
+- `evaluation/`: wrapper cho benchmark runner và vị trí tài liệu đánh giá.
+- `utils/`: helper dùng chung như normalize text.
 
-## 2.1 Adaptive chunking light branch
+Lưu ý quan trọng:
 
-Nhánh `codex/adaptive-chunking-light` đang thử một bản adaptive chunking nhẹ ngay trong `services/document_processor.py`.
+> Đây là refactor cấu trúc an toàn. Các module mới đã tồn tại để project dễ đọc và dễ mở rộng, nhưng chưa bẻ toàn bộ logic ra khỏi `rag_service.py` để tránh làm thay đổi kết quả benchmark sát demo.
+
+## 3. Trạng thái refactor hiện tại
+
+### 3.1 Adaptive chunking light
+
+AI Service đã có adaptive chunking nhẹ ngay trong `services/document_processor.py`.
 
 Ý tưởng:
 
@@ -82,7 +97,7 @@ Nhánh `codex/adaptive-chunking-light` đang thử một bản adaptive chunking
 3. Sinh chunk bằng page-aware splitter.
 4. Chấm điểm nội tại cho từng strategy.
 5. Chọn strategy tốt nhất cho tài liệu đó.
-6. Lưu `chunking_strategy` và `chunking_score` vào metadata chunk.
+6. Lưu `chunking_strategy`, `chunking_score`, `chunking_reason`, `chunking_report` vào metadata chunk.
 ```
 
 Các metric nhẹ đang dùng:
@@ -92,13 +107,39 @@ Các metric nhẹ đang dùng:
 - `metadata`: chunk có giữ được heading/chapter/section metadata không.
 - `density`: tổng nội dung chunk có bao phủ tốt nội dung đã extract không.
 
-Đây không phải bản copy nguyên repo `ekimetrics/adaptive-chunking`. Đây là bản nhẹ để demo và dễ rollback. Nếu muốn dùng framework đầy đủ sau này thì cần đánh giá dependency, license, tốc độ và benchmark riêng.
+Đây không phải bản copy nguyên repo `ekimetrics/adaptive-chunking`. Đây là bản nhẹ để demo, có report giải thích trên UI, và dễ rollback. Nếu muốn dùng framework đầy đủ sau này thì cần đánh giá dependency, license, tốc độ và benchmark riêng.
 
 Tắt adaptive chunking bằng biến môi trường:
 
 ```powershell
 $env:ADAPTIVE_CHUNKING="false"
 ```
+
+### 3.2 Module boundary đã tạo
+
+Các folder sau đã có file Python thật:
+
+```text
+ingestion/loaders.py
+chunking/structured_chunker.py
+embeddings/embedder.py
+vectordb/chroma_store.py
+retrieval/vector_search.py
+retrieval/keyword_search.py
+retrieval/metadata_search.py
+retrieval/fusion.py
+retrieval/rerank.py
+guards/intent_gate.py
+guards/ambiguity_guard.py
+guards/safety_guard.py
+llm/ollama_client.py
+evaluation/run_demo_benchmark.py
+utils/text_normalization.py
+```
+
+Chúng đang là facade/adapter/helper mỏng. Việc này giúp cây thư mục giống một RAG project thật hơn mà không phá luồng đang chạy.
+
+## 4. Nếu muốn refactor sâu hơn
 
 ### Bước 1: Tách guards trước
 
@@ -220,7 +261,7 @@ evaluation/
 
 Nhưng nếu chuyển đường dẫn, nhớ sửa README và command chạy.
 
-## 4. Những thứ không nên refactor vội
+## 5. Những thứ không nên refactor vội
 
 Không nên đổi cùng lúc:
 
@@ -246,7 +287,7 @@ Nên giữ API response tương thích:
 
 UI RazorPages đang phụ thuộc các field này để hiển thị chat và AI Circuit Live.
 
-## 5. Khi nào bắt buộc re-index?
+## 6. Khi nào bắt buộc re-index?
 
 Bắt buộc xóa ChromaDB và index lại nếu sửa:
 
@@ -272,7 +313,7 @@ Không bắt buộc re-index nếu chỉ sửa:
 - benchmark evaluator.
 - answer post-processing.
 
-## 6. Test bắt buộc sau refactor
+## 7. Test bắt buộc sau refactor
 
 Sau mỗi lần tách module, chạy:
 
@@ -302,7 +343,7 @@ dotnet build D:\Project\rag-razorpages\RazorPages\EduChatbot.RazorPages\EduChatb
 
 Sau đó xóa `.tmp-build-razor`.
 
-## 7. Smoke test thủ công
+## 8. Smoke test thủ công
 
 Sau khi refactor, test trong UI:
 
@@ -324,7 +365,7 @@ Kỳ vọng:
 - `So sánh chương 1 của Gomaa và DDIA`: lấy evidence từ cả hai file.
 - Prompt injection: bị chặn, không retrieval.
 
-## 8. Những lỗi dễ gặp khi tách code
+## 9. Những lỗi dễ gặp khi tách code
 
 ### Import path lỗi
 
@@ -373,7 +414,7 @@ Nếu benchmark tụt:
 - Không sửa đại trà.
 - Ưu tiên fix theo nhóm: source, chapter, conflict, duplicate, guard.
 
-## 9. Nguyên tắc refactor
+## 10. Nguyên tắc refactor
 
 Nên làm:
 
@@ -391,8 +432,8 @@ Không nên làm:
 - Commit ChromaDB, uploads, logs runtime.
 - Refactor lớn sát giờ demo nếu bản hiện tại đang chạy ổn.
 
-## 10. Câu trả lời nếu thầy hỏi vì sao chưa tách hết
+## 11. Câu trả lời nếu thầy hỏi vì sao còn logic lớn trong `services`
 
 Có thể nói:
 
-> Hiện tại AI Service đã tách riêng khỏi web app và có các phần rõ như document processor, RAG service, prompts, benchmark và ChromaDB. Nếu phát triển production, em sẽ refactor sâu hơn thành các module ingestion, chunking, embeddings, retrieval, vectordb, guards, llm và evaluation. Tuy nhiên trong giai đoạn demo, em ưu tiên tính ổn định, benchmark và trace UI trước, vì refactor lớn có thể làm thay đổi retrieval và cần test lại toàn bộ.
+> Hiện tại AI Service đã tách riêng khỏi web app và đã có cấu trúc module theo các nhóm ingestion, chunking, embeddings, vectordb, retrieval, guards, llm, evaluation và utils. Một phần logic runtime vẫn nằm trong `services/rag_service.py` và `services/document_processor.py` để giữ ổn định benchmark. Nếu phát triển production tiếp, em sẽ chuyển dần logic từ hai service lớn đó sang các package đã tạo, mỗi bước đều chạy benchmark lại.

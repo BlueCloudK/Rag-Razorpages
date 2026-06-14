@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import unicodedata
 import PyPDF2
 from docx import Document as DocxDocument
@@ -513,16 +514,89 @@ class DocumentProcessor:
             "reasons": []
         }
 
-    def with_strategy_score(self, chunks, strategy, score):
+    def describe_strategy_result(self, strategy, data, selected=False):
+        reasons = []
+        if data.get("metadata", 0) >= 0.75:
+            reasons.append("keeps chapter/page metadata well")
+        elif data.get("metadata", 0) < 0.35:
+            reasons.append("weak chapter/page metadata")
+
+        if data.get("integrity", 0) >= 0.85:
+            reasons.append("rarely cuts sentences awkwardly")
+        elif data.get("integrity", 0) < 0.65:
+            reasons.append("may cut sentence boundaries")
+
+        if data.get("size", 0) >= 0.65:
+            reasons.append("balanced chunk sizes")
+        elif data.get("size", 0) < 0.35:
+            reasons.append("many chunks are too short or too long")
+
+        if data.get("density", 0) >= 0.85:
+            reasons.append("preserves most extracted text")
+        elif data.get("density", 0) < 0.60:
+            reasons.append("lower text coverage")
+
+        if not reasons:
+            reasons.append("acceptable fallback strategy")
+        if selected:
+            reasons.insert(0, "selected by highest score")
+
+        return {
+            "strategy": strategy,
+            "score": round(float(data.get("score", 0)), 4),
+            "size": round(float(data.get("size", 0)), 4),
+            "integrity": round(float(data.get("integrity", 0)), 4),
+            "metadata": round(float(data.get("metadata", 0)), 4),
+            "density": round(float(data.get("density", 0)), 4),
+            "reason": "; ".join(reasons[:4])
+        }
+
+    def build_chunking_report(self, scores, selected_strategy):
+        strategies = [
+            self.describe_strategy_result(name, data, selected=(name == selected_strategy))
+            for name, data in sorted(scores.items(), key=lambda item: item[1].get("score", 0), reverse=True)
+        ]
+        selected = next((item for item in strategies if item["strategy"] == selected_strategy), strategies[0] if strategies else {})
+        return {
+            "enabled": bool(self.adaptive_chunking),
+            "selected_strategy": selected_strategy,
+            "selected_score": selected.get("score", 0),
+            "summary": selected.get("reason", "selected strategy for this document"),
+            "strategies": strategies
+        }
+
+    def with_strategy_report(self, chunks, strategy, report):
+        score = float(report.get("selected_score") or 0)
+        report_json = json.dumps(report, ensure_ascii=False, separators=(",", ":"))[:6000]
         for index, chunk in enumerate(chunks):
             chunk["chunking_strategy"] = strategy
-            chunk["chunking_score"] = round(float(score), 4)
+            chunk["chunking_score"] = round(score, 4)
+            chunk["chunking_report"] = report_json
+            chunk["chunking_reason"] = str(report.get("summary") or "")[:500]
             chunk["local_index"] = index
         return chunks
 
     def split_units(self, units):
         if not self.adaptive_chunking:
-            return self.split_units_structured(units, "structured_heading", 1.0)
+            chunks = self.split_units_structured(units, "structured_heading", 1.0)
+            report = {
+                "enabled": False,
+                "selected_strategy": "structured_heading",
+                "selected_score": 1.0,
+                "summary": "adaptive chunking is disabled; using structured heading splitter",
+                "strategies": [
+                    {
+                        "strategy": "structured_heading",
+                        "score": 1.0,
+                        "size": 1.0,
+                        "integrity": 1.0,
+                        "metadata": 1.0,
+                        "density": 1.0,
+                        "reason": "adaptive chunking is disabled; default strategy used"
+                    }
+                ]
+            }
+            return self.with_strategy_report(chunks, "structured_heading", report)
 
         candidates = {
             "structured_heading": self.split_units_structured(units, "structured_heading", 0),
@@ -531,10 +605,10 @@ class DocumentProcessor:
         }
         scores = {name: self.score_chunk_strategy(chunks, units) for name, chunks in candidates.items()}
 
-        priority = {"structured_heading": 0.03, "page_aware": 0.015, "recursive_document": 0.0}
-        best_name = max(scores, key=lambda name: scores[name]["score"] + priority.get(name, 0.0))
-        best_score = scores[best_name]["score"]
-        chunks = self.with_strategy_score(candidates[best_name], best_name, best_score)
+        best_name = max(scores, key=lambda name: scores[name]["score"])
+        report = self.build_chunking_report(scores, best_name)
+        best_score = report["selected_score"]
+        chunks = self.with_strategy_report(candidates[best_name], best_name, report)
 
         summary = ", ".join(
             f"{name}={data['score']:.2f}" for name, data in sorted(scores.items())
