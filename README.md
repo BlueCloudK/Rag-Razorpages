@@ -97,6 +97,7 @@ The app seeds demo accounts in Development:
 
 - The AI service is shared through `AIServices/AiService`.
 - RAG retrieval uses structured chunking, ChromaDB, and `Qwen/Qwen3-Embedding-0.6B` on CUDA by default. The demo machine has PyTorch CUDA installed and a GTX 1650, so indexing uses the GPU while chat generation uses Ollama.
+- Branch `codex/adaptive-chunking-light` experiments with a lightweight adaptive chunking selector. For each document, the AI service compares `structured_heading`, `recursive_document`, and `page_aware` strategies, scores them with intrinsic metrics, then stores `chunking_strategy` and `chunking_score` in chunk metadata. This is a local demo-friendly version, not a full dependency import from the external adaptive-chunking framework.
 - Chunk metadata is chapter-aware: `chapter_number`, `chapter_title`, `section_number`, `section_title`, `page_number`, and `content_zone`. This lets the chatbot answer chapter/outline questions without accidentally using table-of-contents, appendix, references, or answer-key chunks.
 - Demo retrieval is tuned for the shortened sample PDFs in `sample-documents`: `sample-gomaa-software-modeling-ch1-ch2.pdf`, `sample-gomaa-software-modeling-ch1-ch2-modified-wrong.pdf`, and `sample-ddia-ch1-ch2.pdf`.
 - The modified Gomaa PDF intentionally contains wrong information. It is used to demonstrate conflict-aware RAG: when original and modified sources disagree, the chatbot shows both answers grouped by source and says the sources conflict instead of deciding which one is correct.

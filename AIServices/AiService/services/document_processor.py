@@ -48,6 +48,7 @@ class DocumentProcessor:
     def __init__(self, chunk_size=1000, chunk_overlap=200):
         self.chunk_size = int(os.getenv("CHUNK_SIZE", chunk_size))
         self.chunk_overlap = int(os.getenv("CHUNK_OVERLAP", chunk_overlap))
+        self.adaptive_chunking = os.getenv("ADAPTIVE_CHUNKING", "true").strip().lower() not in ["0", "false", "no", "off"]
         self.text_splitter = LocalRecursiveTextSplitter(self.chunk_size, self.chunk_overlap)
 
     def clean_text(self, text):
@@ -377,7 +378,25 @@ class DocumentProcessor:
                 merged.append(pending)
         return merged
 
-    def split_units(self, units):
+    def build_chunk(self, chunk_text, unit, local_index, strategy="structured", strategy_score=0.0):
+        return {
+            "text": chunk_text,
+            "page_number": unit.get("page_number"),
+            "slide_number": unit.get("slide_number"),
+            "heading": unit.get("heading") or "",
+            "section_path": unit.get("section_path") or unit.get("heading") or "",
+            "detected_title": unit.get("detected_title") or unit.get("heading") or "",
+            "chapter_number": int(unit.get("chapter_number") or 0),
+            "chapter_title": unit.get("chapter_title") or "",
+            "section_number": unit.get("section_number") or "",
+            "section_title": unit.get("section_title") or "",
+            "content_zone": unit.get("content_zone") or "body",
+            "local_index": local_index,
+            "chunking_strategy": strategy,
+            "chunking_score": round(float(strategy_score or 0), 4)
+        }
+
+    def split_units_structured(self, units, strategy="structured_heading", strategy_score=0.0):
         chunks = []
         for unit in units:
             split_texts = self.merge_short_chunks(self.text_splitter.split_text(unit["text"]))
@@ -385,20 +404,142 @@ class DocumentProcessor:
                 chunk_text = self.clean_text(chunk_text)
                 if len(chunk_text) < 20:
                     continue
-                chunks.append({
-                    "text": chunk_text,
-                    "page_number": unit.get("page_number"),
-                    "slide_number": unit.get("slide_number"),
-                    "heading": unit.get("heading") or "",
-                    "section_path": unit.get("section_path") or unit.get("heading") or "",
-                    "detected_title": unit.get("detected_title") or unit.get("heading") or "",
-                    "chapter_number": int(unit.get("chapter_number") or 0),
-                    "chapter_title": unit.get("chapter_title") or "",
-                    "section_number": unit.get("section_number") or "",
-                    "section_title": unit.get("section_title") or "",
-                    "content_zone": unit.get("content_zone") or "body",
-                    "local_index": local_index
-                })
+                chunks.append(self.build_chunk(chunk_text, unit, local_index, strategy, strategy_score))
+        return chunks
+
+    def split_units_recursive_document(self, units, strategy="recursive_document", strategy_score=0.0):
+        if not units:
+            return []
+        document_text = self.clean_text("\n\n".join(unit.get("text", "") for unit in units))
+        split_texts = self.merge_short_chunks(self.text_splitter.split_text(document_text))
+        chunks = []
+        last_unit = units[0]
+        search_cursor = 0
+        for local_index, chunk_text in enumerate(split_texts):
+            chunk_text = self.clean_text(chunk_text)
+            if len(chunk_text) < 20:
+                continue
+            needle = chunk_text[:80]
+            found_at = document_text.find(needle, search_cursor) if needle else -1
+            if found_at >= 0:
+                search_cursor = found_at + max(len(needle), 1)
+                running = 0
+                for unit in units:
+                    running += len(unit.get("text", "")) + 2
+                    if running >= found_at:
+                        last_unit = unit
+                        break
+            chunks.append(self.build_chunk(chunk_text, last_unit, local_index, strategy, strategy_score))
+        return chunks
+
+    def split_units_page_aware(self, units, strategy="page_aware", strategy_score=0.0):
+        grouped = {}
+        order = []
+        for unit in units:
+            key = unit.get("page_number") or unit.get("slide_number") or f"unit:{len(order)}"
+            if key not in grouped:
+                grouped[key] = []
+                order.append(key)
+            grouped[key].append(unit)
+
+        chunks = []
+        local_index = 0
+        for key in order:
+            group_units = grouped[key]
+            base_unit = group_units[0]
+            text = self.clean_text("\n\n".join(unit.get("text", "") for unit in group_units))
+            split_texts = self.merge_short_chunks(self.text_splitter.split_text(text))
+            for chunk_text in split_texts:
+                chunk_text = self.clean_text(chunk_text)
+                if len(chunk_text) < 20:
+                    continue
+                chunks.append(self.build_chunk(chunk_text, base_unit, local_index, strategy, strategy_score))
+                local_index += 1
+        return chunks
+
+    def chunk_lengths(self, chunks):
+        return [len(chunk.get("text", "")) for chunk in chunks if chunk.get("text")]
+
+    def score_chunk_strategy(self, chunks, units):
+        if not chunks:
+            return {"score": 0.0, "size": 0.0, "integrity": 0.0, "metadata": 0.0, "density": 0.0, "reasons": ["no_chunks"]}
+
+        lengths = self.chunk_lengths(chunks)
+        target_min = max(180, int(self.chunk_size * 0.45))
+        target_max = int(self.chunk_size * 1.18)
+        size_ok = sum(1 for length in lengths if target_min <= length <= target_max) / max(len(lengths), 1)
+        too_short = sum(1 for length in lengths if length < 120) / max(len(lengths), 1)
+        too_long = sum(1 for length in lengths if length > self.chunk_size * 1.35) / max(len(lengths), 1)
+
+        heading_units = sum(1 for unit in units if unit.get("heading") or unit.get("section_path") or unit.get("chapter_number"))
+        metadata_chunks = sum(1 for chunk in chunks if chunk.get("section_path") or chunk.get("chapter_number"))
+        metadata_score = metadata_chunks / max(len(chunks), 1)
+        if heading_units == 0:
+            metadata_score = max(metadata_score, 0.65)
+
+        broken_sentence = 0
+        for chunk in chunks:
+            text = chunk.get("text", "").strip()
+            if not text:
+                continue
+            starts_bad = bool(re.match(r"^[,;:)\]]|^[a-z][a-z]+\s", text))
+            ends_bad = bool(re.search(r"\b(and|or|the|a|an|of|to|for|with|in|on|by)$", text[-80:].strip(), re.IGNORECASE))
+            if starts_bad or ends_bad:
+                broken_sentence += 1
+        integrity_score = 1 - (broken_sentence / max(len(chunks), 1))
+
+        source_chars = sum(len(unit.get("text", "")) for unit in units)
+        chunk_chars = sum(lengths)
+        if source_chars <= 0:
+            density_score = 0.0
+        else:
+            ratio = chunk_chars / source_chars
+            density_score = max(0.0, 1 - abs(1.0 - min(ratio, 1.35)) / 0.35)
+
+        score = (
+            size_ok * 0.34 +
+            integrity_score * 0.26 +
+            metadata_score * 0.24 +
+            density_score * 0.16 -
+            too_short * 0.12 -
+            too_long * 0.10
+        )
+        return {
+            "score": round(max(0.0, min(score, 1.0)), 4),
+            "size": round(size_ok, 4),
+            "integrity": round(integrity_score, 4),
+            "metadata": round(metadata_score, 4),
+            "density": round(density_score, 4),
+            "reasons": []
+        }
+
+    def with_strategy_score(self, chunks, strategy, score):
+        for index, chunk in enumerate(chunks):
+            chunk["chunking_strategy"] = strategy
+            chunk["chunking_score"] = round(float(score), 4)
+            chunk["local_index"] = index
+        return chunks
+
+    def split_units(self, units):
+        if not self.adaptive_chunking:
+            return self.split_units_structured(units, "structured_heading", 1.0)
+
+        candidates = {
+            "structured_heading": self.split_units_structured(units, "structured_heading", 0),
+            "recursive_document": self.split_units_recursive_document(units, "recursive_document", 0),
+            "page_aware": self.split_units_page_aware(units, "page_aware", 0)
+        }
+        scores = {name: self.score_chunk_strategy(chunks, units) for name, chunks in candidates.items()}
+
+        priority = {"structured_heading": 0.03, "page_aware": 0.015, "recursive_document": 0.0}
+        best_name = max(scores, key=lambda name: scores[name]["score"] + priority.get(name, 0.0))
+        best_score = scores[best_name]["score"]
+        chunks = self.with_strategy_score(candidates[best_name], best_name, best_score)
+
+        summary = ", ".join(
+            f"{name}={data['score']:.2f}" for name, data in sorted(scores.items())
+        )
+        print(f"  Adaptive chunking selected {best_name} ({best_score:.2f}); candidates: {summary}", flush=True)
         return chunks
 
     def process_file(self, file_path):
@@ -418,9 +559,11 @@ class DocumentProcessor:
             return []
 
         chunks = self.split_units(units)
+        selected_strategy = chunks[0].get("chunking_strategy", "structured_heading") if chunks else "none"
+        selected_score = chunks[0].get("chunking_score", 0) if chunks else 0
         print(
-            f"  Extracted {extracted_chars} chars -> {len(units)} sections -> {len(chunks)} structured chunks "
-            f"(size={self.chunk_size}, overlap={self.chunk_overlap})",
+            f"  Extracted {extracted_chars} chars -> {len(units)} sections -> {len(chunks)} chunks "
+            f"(strategy={selected_strategy}, score={selected_score}, size={self.chunk_size}, overlap={self.chunk_overlap})",
             flush=True
         )
         return chunks

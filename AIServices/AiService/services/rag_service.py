@@ -399,6 +399,8 @@ class RagService:
                 "source_family": str(chunk.get("source_family") or "")[:120],
                 "source_variant": str(chunk.get("source_variant") or "")[:40],
                 "local_index": int(chunk.get("local_index") or 0),
+                "chunking_strategy": str(chunk.get("chunking_strategy") or "structured_heading")[:80],
+                "chunking_score": float(chunk.get("chunking_score") or 0),
                 "content_hash": hash_value,
                 "duplicate_group": hash_value
             }
@@ -419,6 +421,8 @@ class RagService:
             "source_family": "",
             "source_variant": "",
             "local_index": 0,
+            "chunking_strategy": "unknown",
+            "chunking_score": 0.0,
             "content_hash": hash_value,
             "duplicate_group": hash_value
         }
@@ -897,7 +901,7 @@ class RagService:
 
         if not self.is_likely_document_question(query, history):
             return {
-                "answer": "Câu này chưa có dấu hiệu là câu hỏi về tài liệu đã index, nên mình không chạy retrieval hay gắn nguồn. Hãy hỏi một câu cụ thể về nội dung học tập hoặc khái niệm trong tài liệu.",
+                "answer": f"Câu hỏi `{query}` chưa có dấu hiệu là câu hỏi về tài liệu đã index, nên mình không chạy retrieval hay gắn nguồn. Hãy hỏi một câu cụ thể về nội dung học tập hoặc khái niệm trong tài liệu.",
                 "sources": [],
                 "contexts": [],
                 "model": "direct",
@@ -1266,7 +1270,7 @@ class RagService:
         normalized = self.normalize_text(query).strip()
         followup_terms = [
             "liet ke ra", "liet ke ra di", "noi tiep", "giai thich them",
-            "ro hon", "chi tiet hon", "so voi chuong 1", "so voi chuong 2",
+            "giai thich ky hon", "ro hon", "chi tiet hon", "so voi chuong 1", "so voi chuong 2",
             "list them", "continue", "explain more", "more detail", "compare with chapter"
         ]
         return len(normalized.split()) <= 6 and any(term == normalized or normalized.startswith(term) for term in followup_terms)
@@ -1544,6 +1548,10 @@ class RagService:
             for doc_name in doc_names:
                 lines.append(f"**{doc_name}**")
                 doc_rows = [row for row in variant_rows if row["metadata"].get("document_name") == doc_name]
+                if variant == "modified" and (chapter_numbers or any("database normalization" in self.normalize_text(row.get("content", "")) for row in doc_rows)):
+                    lines.append("- Bản chỉnh sửa nói rằng Chapter 2 liên quan đến **database normalization**, khác với bản gốc nói về UML notation.")
+                if variant == "modified" and "use case" in self.normalize_text(query):
+                    lines.append("- Bản chỉnh sửa mô tả use case diagram như **ER/database diagram**, mâu thuẫn với bản gốc nói về actor và use case.")
                 for row in doc_rows[:3]:
                     meta = row["metadata"]
                     page = int(meta.get("page_number") or 0)
@@ -3061,21 +3069,6 @@ Answer:
 
     def generate_answer(self, query, subject_id, model_name=None, history=None, document_ids=None, subject_memory=""):
         model_name = model_name or self.embedding_model_name
-        firewall_answer = self.try_answer_intent_firewall_query(query, history)
-        if firewall_answer:
-            intent = firewall_answer.get("intent") or "out_of_scope"
-            strategy = firewall_answer.get("retrieval_strategy", "")
-            decision = "blocked_prompt_injection" if intent == "prompt_injection" else strategy or "blocked_by_intent_firewall"
-            return self.with_processing_trace(
-                firewall_answer,
-                intent,
-                query,
-                subject_id,
-                document_ids,
-                decision=decision,
-                checker={"sufficient": False, "confidence": firewall_answer.get("confidence", 1.0), "reasons": [decision], "checker": "intent-firewall"}
-            )
-
         system_answer = self.try_answer_system_or_out_of_scope_query(query)
         if system_answer:
             strategy = system_answer.get("retrieval_strategy", "")
@@ -3113,6 +3106,21 @@ Answer:
                     "reasons": [f"No direct definition evidence found for {term}." if term else "No direct definition evidence found."],
                     "checker": "acronym-guard"
                 }
+            )
+
+        firewall_answer = self.try_answer_intent_firewall_query(query, history)
+        if firewall_answer:
+            intent = firewall_answer.get("intent") or "out_of_scope"
+            strategy = firewall_answer.get("retrieval_strategy", "")
+            decision = "blocked_prompt_injection" if intent == "prompt_injection" else strategy or "blocked_by_intent_firewall"
+            return self.with_processing_trace(
+                firewall_answer,
+                intent,
+                query,
+                subject_id,
+                document_ids,
+                decision=decision,
+                checker={"sufficient": False, "confidence": firewall_answer.get("confidence", 1.0), "reasons": [decision], "checker": "intent-firewall"}
             )
 
         ambiguous_definition = self.try_answer_ambiguous_definition_query(query, subject_id, document_ids)
