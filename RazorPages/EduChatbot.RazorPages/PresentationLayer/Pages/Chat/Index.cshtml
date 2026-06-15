@@ -12,6 +12,10 @@
     var messageCount = Model.CurrentSession.Messages?.Count() ?? 0;
     var activeSessionId = Model.ActiveSessionId != 0 ? Model.ActiveSessionId : Model.CurrentSession?.Id ?? 0;
     var activeTab = Model.ActiveTab;
+    var currentUserIsAdmin = User.IsInRole(ServiceLayer.Services.AuthConstants.Admin);
+    var lecturerRole = ServiceLayer.Services.AuthConstants.Lecturer;
+    var studentRole = ServiceLayer.Services.AuthConstants.Student;
+    var subjectLeadRole = ServiceLayer.Services.AuthConstants.SubjectLead;
 }
 <!DOCTYPE html>
 <html lang="vi">
@@ -600,7 +604,15 @@
                                     <option value="@option.UserId">@option.Email</option>
                                 }
                             </select>
-                            <input type="hidden" name="roleInSubject" value="auto" />
+                            <select class="panel-input" name="roleInSubject" required style="max-width: 220px;">
+                                <option value="auto">Account default</option>
+                                <option value="@lecturerRole">Lecturer</option>
+                                <option value="@studentRole">Student</option>
+                                @if (currentUserIsAdmin)
+                                {
+                                    <option value="@subjectLeadRole">Subject lead</option>
+                                }
+                            </select>
                             <button type="submit" class="panel-btn primary"><i class="bi bi-person-plus"></i> Add member</button>
                         </form>
                     }
@@ -615,6 +627,39 @@
                             <div class="workspace-card">
                                 <div class="workspace-card-title"><i class="bi bi-person-circle me-2 text-primary"></i>@member.UserEmail</div>
                                 <div class="workspace-card-meta">Role in subject: @subjectRoleLabel</div>
+                                @if (currentUserIsAdmin && !member.IsSystemAdmin)
+                                {
+                                    <form method="post" asp-page-handler="UpdateMemberRole" asp-route-subjectId="@subjectId" class="panel-actions mt-3">
+                                        <input type="hidden" name="membershipId" value="@member.Id" />
+                                        <select class="panel-input" name="roleInSubject" aria-label="Subject role for @member.UserEmail">
+                                            @if (member.RoleInSubject == lecturerRole)
+                                            {
+                                                <option value="@lecturerRole" selected>Lecturer</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@lecturerRole">Lecturer</option>
+                                            }
+                                            @if (member.RoleInSubject == studentRole)
+                                            {
+                                                <option value="@studentRole" selected>Student</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@studentRole">Student</option>
+                                            }
+                                            @if (member.RoleInSubject == subjectLeadRole)
+                                            {
+                                                <option value="@subjectLeadRole" selected>Subject lead</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@subjectLeadRole">Subject lead</option>
+                                            }
+                                        </select>
+                                        <button type="submit" class="panel-btn"><i class="bi bi-person-gear"></i> Save role</button>
+                                    </form>
+                                }
                                 @if (!member.IsCurrentUser && !member.IsSystemAdmin)
                                 {
                                     <form method="post" asp-page-handler="RemoveMember" asp-route-subjectId="@subjectId" class="mt-3" onsubmit="return confirm('Remove this member from the subject?');">

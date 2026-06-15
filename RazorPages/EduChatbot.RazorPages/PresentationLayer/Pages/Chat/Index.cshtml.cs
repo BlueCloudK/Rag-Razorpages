@@ -134,6 +134,12 @@ public class IndexModel : PageModel
         return RedirectToPage(new { subjectId, tab = "members" });
     }
 
+    public async Task<IActionResult> OnPostUpdateMemberRoleAsync(int subjectId, int membershipId, string roleInSubject)
+    {
+        await _chatService.UpdateSubjectMemberRoleAsync(subjectId, membershipId, roleInSubject);
+        return RedirectToPage(new { subjectId, tab = "members" });
+    }
+
     public async Task<IActionResult> OnPostRemoveMemberAsync(int subjectId, int membershipId)
     {
         await _chatService.RemoveSubjectMemberAsync(subjectId, membershipId);

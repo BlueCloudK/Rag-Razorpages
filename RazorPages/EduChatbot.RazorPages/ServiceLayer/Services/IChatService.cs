@@ -11,6 +11,7 @@ namespace ServiceLayer.Services
         Task<int?> CreateSessionAsync(int subjectId);
         Task<bool> DeleteSessionAsync(int subjectId, int sessionId);
         Task<bool> AddSubjectMemberAsync(int subjectId, string userId, string roleInSubject);
+        Task<bool> UpdateSubjectMemberRoleAsync(int subjectId, int membershipId, string roleInSubject);
         Task<bool> RemoveSubjectMemberAsync(int subjectId, int membershipId);
     }
 }

@@ -408,14 +408,11 @@ namespace ServiceLayer.Services
                 return false;
 
             var targetIsAdmin = await _userManager.IsInRoleAsync(targetUser, AuthConstants.Admin);
-            if (targetIsAdmin && !await _currentUser.IsInRoleAsync(AuthConstants.Admin))
+            var currentUserIsAdmin = await _currentUser.IsInRoleAsync(AuthConstants.Admin);
+            if (targetIsAdmin && !currentUserIsAdmin)
                 return false;
 
-            roleInSubject = await _userManager.IsInRoleAsync(targetUser, AuthConstants.Lecturer)
-                ? AuthConstants.Lecturer
-                : await _userManager.IsInRoleAsync(targetUser, AuthConstants.Student)
-                    ? AuthConstants.Student
-                    : string.Empty;
+            roleInSubject = await ResolveSubjectRoleAsync(targetUser, roleInSubject, currentUserIsAdmin);
             if (string.IsNullOrEmpty(roleInSubject))
                 return false;
 
@@ -435,6 +432,9 @@ namespace ServiceLayer.Services
             if (exists)
                 return false;
 
+            if (roleInSubject == AuthConstants.SubjectLead)
+                await DemoteExistingSubjectLeadAsync(subjectId);
+
             _context.SubjectMemberships.Add(new SubjectMembership
             {
                 SubjectId = subjectId,
@@ -444,6 +444,38 @@ namespace ServiceLayer.Services
             await _context.SaveChangesAsync();
             await _auditLogService.RecordAsync("AddMember", "SubjectMembership", null, subjectId, null, $"Added {targetUser.Email} as {roleInSubject}.");
             await _realtime.MembershipChangedAsync("added", subjectId, userId);
+            return true;
+        }
+
+        public async Task<bool> UpdateSubjectMemberRoleAsync(int subjectId, int membershipId, string roleInSubject)
+        {
+            if (!await _accessControl.CanManageSubjectAsync(subjectId))
+                return false;
+
+            var currentUserIsAdmin = await _currentUser.IsInRoleAsync(AuthConstants.Admin);
+            if (!currentUserIsAdmin)
+                return false;
+
+            var membership = await _context.SubjectMemberships
+                .Include(m => m.User)
+                .FirstOrDefaultAsync(m => m.Id == membershipId && m.SubjectId == subjectId);
+            if (membership == null || membership.User == null)
+                return false;
+
+            if (await _userManager.IsInRoleAsync(membership.User, AuthConstants.Admin))
+                return false;
+
+            var resolvedRole = await ResolveSubjectRoleAsync(membership.User, roleInSubject, currentUserIsAdmin);
+            if (string.IsNullOrEmpty(resolvedRole) || membership.RoleInSubject == resolvedRole)
+                return false;
+
+            if (resolvedRole == AuthConstants.SubjectLead)
+                await DemoteExistingSubjectLeadAsync(subjectId, membership.Id);
+
+            membership.RoleInSubject = resolvedRole;
+            await _context.SaveChangesAsync();
+            await _auditLogService.RecordAsync("UpdateMemberRole", "SubjectMembership", membership.Id, subjectId, null, $"Updated subject membership for {membership.User.Email} to {resolvedRole}.");
+            await _realtime.MembershipChangedAsync("updated", subjectId, membership.UserId);
             return true;
         }
 
@@ -474,6 +506,39 @@ namespace ServiceLayer.Services
             await _auditLogService.RecordAsync("RemoveMember", "SubjectMembership", membership.Id, subjectId, null, $"Removed subject membership for {targetUser?.Email ?? membership.UserId}.");
             await _realtime.MembershipChangedAsync("removed", subjectId, membership.UserId);
             return true;
+        }
+
+        private async Task<string> ResolveSubjectRoleAsync(ApplicationUser targetUser, string requestedRole, bool currentUserIsAdmin)
+        {
+            var targetIsLecturer = await _userManager.IsInRoleAsync(targetUser, AuthConstants.Lecturer);
+            var targetIsStudent = await _userManager.IsInRoleAsync(targetUser, AuthConstants.Student);
+
+            if (requestedRole == AuthConstants.SubjectLead)
+                return currentUserIsAdmin && targetIsLecturer ? AuthConstants.SubjectLead : string.Empty;
+
+            if (requestedRole == AuthConstants.Lecturer)
+                return targetIsLecturer ? AuthConstants.Lecturer : string.Empty;
+
+            if (requestedRole == AuthConstants.Student)
+                return targetIsStudent ? AuthConstants.Student : string.Empty;
+
+            if (targetIsLecturer)
+                return AuthConstants.Lecturer;
+
+            return targetIsStudent ? AuthConstants.Student : string.Empty;
+        }
+
+        private async Task DemoteExistingSubjectLeadAsync(int subjectId, int? exceptMembershipId = null)
+        {
+            var currentLeads = await _context.SubjectMemberships
+                .Where(m => m.SubjectId == subjectId && m.RoleInSubject == AuthConstants.SubjectLead)
+                .Where(m => exceptMembershipId == null || m.Id != exceptMembershipId)
+                .ToListAsync();
+
+            foreach (var currentLead in currentLeads)
+            {
+                currentLead.RoleInSubject = AuthConstants.Lecturer;
+            }
         }
 
         private async Task<ChatSession?> FindSessionAsync(int subjectId, string userId, int? sessionId)
