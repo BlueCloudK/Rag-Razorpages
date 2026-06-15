@@ -606,11 +606,9 @@
                             </select>
                             <select class="panel-input" name="roleInSubject" required style="max-width: 220px;">
                                 <option value="auto">Account default</option>
-                                <option value="@lecturerRole">Lecturer</option>
-                                <option value="@studentRole">Student</option>
                                 @if (currentUserIsAdmin)
                                 {
-                                    <option value="@subjectLeadRole">Subject lead</option>
+                                    <option value="@subjectLeadRole">Subject lead (lecturer only)</option>
                                 }
                             </select>
                             <button type="submit" class="panel-btn primary"><i class="bi bi-person-plus"></i> Add member</button>
@@ -624,10 +622,11 @@
                         @foreach (var member in Model.SubjectMembers ?? Enumerable.Empty<ServiceLayer.Models.SubjectMembershipAdminDto>())
                         {
                             var subjectRoleLabel = member.RoleInSubject == ServiceLayer.Services.AuthConstants.SubjectLead ? "Subject lead" : member.RoleInSubject;
+                            var canEditSubjectRole = currentUserIsAdmin && !member.IsSystemAdmin && member.RoleInSubject != studentRole;
                             <div class="workspace-card">
                                 <div class="workspace-card-title"><i class="bi bi-person-circle me-2 text-primary"></i>@member.UserEmail</div>
                                 <div class="workspace-card-meta">Role in subject: @subjectRoleLabel</div>
-                                @if (currentUserIsAdmin && !member.IsSystemAdmin)
+                                @if (canEditSubjectRole)
                                 {
                                     <form method="post" asp-page-handler="UpdateMemberRole" asp-route-subjectId="@subjectId" class="panel-actions mt-3">
                                         <input type="hidden" name="membershipId" value="@member.Id" />
@@ -640,14 +639,6 @@
                                             {
                                                 <option value="@lecturerRole">Lecturer</option>
                                             }
-                                            @if (member.RoleInSubject == studentRole)
-                                            {
-                                                <option value="@studentRole" selected>Student</option>
-                                            }
-                                            else
-                                            {
-                                                <option value="@studentRole">Student</option>
-                                            }
                                             @if (member.RoleInSubject == subjectLeadRole)
                                             {
                                                 <option value="@subjectLeadRole" selected>Subject lead</option>
@@ -659,6 +650,10 @@
                                         </select>
                                         <button type="submit" class="panel-btn"><i class="bi bi-person-gear"></i> Save role</button>
                                     </form>
+                                }
+                                else if (member.RoleInSubject == studentRole)
+                                {
+                                    <div class="workspace-card-meta mt-3"><i class="bi bi-info-circle me-1"></i>Student role is fixed here. Change the account role in Admin &gt; Users first.</div>
                                 }
                                 @if (!member.IsCurrentUser && !member.IsSystemAdmin)
                                 {
