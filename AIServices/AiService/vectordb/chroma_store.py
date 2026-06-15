@@ -3,6 +3,32 @@
 import chromadb
 
 
+def build_scope_filter(subject_id, document_ids=None):
+    allowed_ids = [str(doc_id) for doc_id in (document_ids or []) if str(doc_id).strip()]
+    if allowed_ids:
+        return {"document_id": {"$in": allowed_ids}}
+    return {"subject_id": subject_id}
+
+
+def rows_from_chroma_result(result):
+    rows = []
+    ids = result.get("ids", [])
+    for i, (doc, meta) in enumerate(zip(result.get("documents", []), result.get("metadatas", []))):
+        rows.append({
+            "id": ids[i] if i < len(ids) else f"{meta.get('document_id', 'unknown')}_{i}",
+            "content": doc,
+            "metadata": meta,
+            "dense_similarity": 0.0,
+            "keyword_score": 0.0,
+            "rrf_score": 0.0,
+            "rerank_score": 0.0,
+        })
+    return sorted(rows, key=lambda row: (
+        str(row["metadata"].get("document_id", "")),
+        int(row["metadata"].get("chunk_index", 0)),
+    ))
+
+
 class ChromaStore:
     def __init__(self, path: str, collection_name: str = "edu_documents"):
         self.client = chromadb.PersistentClient(path=path)
