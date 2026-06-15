@@ -1,18 +1,58 @@
-import math
-import hashlib
-import json
 import os
 import re
 import time
-import unicodedata
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from jinja2 import Template
 import sentence_transformers  # Load before ChromaDB to avoid a Windows pyarrow access violation.
-from langchain_huggingface import HuggingFaceEmbeddings
 import chromadb
+
+from utils.text_normalization import (
+    normalize_text as _normalize_text,
+    compact_preview as _compact_preview,
+    normalize_for_content_hash as _normalize_for_content_hash,
+    compute_content_hash as _compute_content_hash,
+    is_vietnamese_query as _is_vietnamese_query,
+    tokenize as _tokenize,
+    get_query_chapter_numbers as _get_query_chapter_numbers,
+    is_definition_query as _is_definition_query,
+    strip_meta_comments as _strip_meta_comments,
+    clean_llm_output as _clean_llm_output,
+)
+from guards.ambiguity_guard import (
+    extract_ambiguous_acronym as _extract_ambiguous_acronym,
+    extract_definition_term as _extract_definition_term,
+    has_direct_definition_for_term as _has_direct_definition_for_term,
+)
+from guards.intent_gate import (
+    is_likely_document_question as _is_likely_document_question,
+    is_clear_out_of_scope_query as _is_clear_out_of_scope_query,
+    is_outline_query as _is_outline_query,
+    is_section_query as _is_section_query,
+    is_summary_query as _is_summary_query,
+    is_document_summary_query as _is_document_summary_query,
+    is_short_followup_query as _is_short_followup_query,
+    is_conflict_sensitive_query as _is_conflict_sensitive_query,
+    is_duplicate_sensitive_query as _is_duplicate_sensitive_query,
+    should_rewrite_query as _should_rewrite_query,
+)
+from guards.safety_guard import classify_intent as _classify_intent
+from embeddings.embedder import EmbeddingManager
+from llm.ollama_client import OllamaClient, parse_json_object as _parse_json_object
+from retrieval.fusion import (
+    fuse_dense_keyword_metadata as _fuse_dense_keyword_metadata,
+    merge_ranked_rows as _merge_ranked_rows,
+)
+from retrieval.keyword_search import keyword_candidates as _keyword_candidates
+from retrieval.metadata_search import metadata_candidates as _metadata_candidates
+from retrieval.rerank import rerank_candidates as _rerank_candidates
+from retrieval.vector_search import dense_candidates as _dense_candidates
+from vectordb.chroma_store import (
+    build_scope_filter as _build_scope_filter,
+    rows_from_chroma_result as _rows_from_chroma_result,
+)
 
 
 class RagService:
@@ -40,8 +80,10 @@ class RagService:
         self.ollama_num_predict = int(os.getenv("OLLAMA_NUM_PREDICT", "512"))
         self.ollama_timeout = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "120"))
         self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+        self.ollama_client = OllamaClient(self.ollama_base_url, timeout=self.ollama_timeout)
         self.embedding_model_name = os.getenv("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B").strip()
         self.embedding_device = os.getenv("EMBEDDING_DEVICE", "cuda").strip()
+        self.embedding_manager = EmbeddingManager(self.embedding_model_name, self.embedding_device)
         self.enable_reranker = os.getenv("RAG_ENABLE_RERANKER", "false").lower() == "true"
         self.reranker_model_name = os.getenv("RERANKER_MODEL", "Qwen/Qwen3-Reranker-0.6B")
         self.enable_agentic_rag = os.getenv("RAG_ENABLE_AGENTIC", "true").lower() == "true"
@@ -85,17 +127,13 @@ class RagService:
         return [str(doc_id) for doc_id in (document_ids or []) if str(doc_id).strip()]
 
     def compact_preview(self, value, limit=180):
-        text = re.sub(r"\s+", " ", str(value or "")).strip()
-        return text[: limit - 1] + "…" if len(text) > limit else text
+        return _compact_preview(value, limit)
 
     def normalize_for_content_hash(self, value):
-        text = unicodedata.normalize("NFKC", str(value or "")).lower()
-        text = re.sub(r"\s+", " ", text).strip()
-        return text
+        return _normalize_for_content_hash(value)
 
     def compute_content_hash(self, value):
-        normalized = self.normalize_for_content_hash(value)
-        return hashlib.sha256(normalized.encode("utf-8")).hexdigest() if normalized else ""
+        return _compute_content_hash(value)
 
     def build_processing_trace(
         self,
@@ -215,13 +253,11 @@ class RagService:
         return response
 
     def build_scope_filter(self, subject_id, document_ids=None):
-        allowed_ids = self.normalize_document_ids(document_ids)
-        if allowed_ids:
-            return {"document_id": {"$in": allowed_ids}}
-        return {"subject_id": subject_id}
+        return _build_scope_filter(subject_id, self.normalize_document_ids(document_ids))
 
     def clear_runtime_caches(self):
         self._query_embedding_cache.clear()
+        self.embedding_manager.clear_cache()
         self._metadata_rows_cache.clear()
         self._chapter_outline_cache.clear()
 
@@ -236,23 +272,10 @@ class RagService:
         return f"{subject_id}|{ids or 'all'}|{self.collection_count()}"
 
     def get_embedding_model(self, model_name=None):
-        model_name = model_name or self.embedding_model_name
-        if model_name not in self.embeddings:
-            print(f"Loading embedding model: {model_name} on {self.embedding_device}...", flush=True)
-            self.embeddings[model_name] = HuggingFaceEmbeddings(
-                model_name=model_name,
-                model_kwargs={"device": self.embedding_device},
-                encode_kwargs={"normalize_embeddings": True}
-            )
-        return self.embeddings[model_name]
+        return self.embedding_manager.get_model(model_name or self.embedding_model_name)
 
     def embed_query_cached(self, query, model_name):
-        normalized_query = self.normalize_text(query)
-        cache_key = f"{model_name}|{normalized_query}"
-        if cache_key not in self._query_embedding_cache:
-            embedder = self.get_embedding_model(model_name)
-            self._query_embedding_cache[cache_key] = embedder.embed_query(query)
-        return self._query_embedding_cache[cache_key]
+        return self.embedding_manager.embed_query_cached(query, model_name)
 
     def get_llm(self):
         if self._llm is None:
@@ -299,67 +322,24 @@ class RagService:
             return self.invoke_ollama_model(fallback_model, prompt)
 
     def invoke_ollama_model(self, model, prompt, num_ctx=None, num_predict=None, temperature=None, timeout=None, response_format=None):
-        payload = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": float(os.getenv("LLM_TEMPERATURE", "0.2")) if temperature is None else temperature,
-                "num_ctx": self.ollama_num_ctx if num_ctx is None else num_ctx,
-                "num_predict": self.ollama_num_predict if num_predict is None else num_predict
-            }
-        }
-        if response_format:
-            payload["format"] = response_format
-        if str(model or "").lower().startswith("qwen3"):
-            payload["think"] = False
-        response = requests.post(
-            f"{self.ollama_base_url}/api/generate",
-            json=payload,
-            timeout=self.ollama_timeout if timeout is None else timeout
+        return self.ollama_client.generate(
+            model,
+            prompt,
+            num_ctx=self.ollama_num_ctx if num_ctx is None else num_ctx,
+            num_predict=self.ollama_num_predict if num_predict is None else num_predict,
+            temperature=float(os.getenv("LLM_TEMPERATURE", "0.2")) if temperature is None else temperature,
+            timeout=self.ollama_timeout if timeout is None else timeout,
+            response_format=response_format,
         )
-        response.raise_for_status()
-        return self.clean_llm_output(response.json().get("response", ""))
 
     def clean_llm_output(self, text):
-        text = str(text or "").strip()
-        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
-        text = self.strip_meta_comments(text)
-        return text.strip()
+        return _clean_llm_output(text)
 
     def strip_meta_comments(self, text):
-        lines = str(text or "").splitlines()
-        cleaned = []
-        meta_patterns = [
-            r"^\s*\*{0,2}note\s*\*{0,2}\s*:",
-            r"^\s*ghi chú\s*:",
-            r"^\s*i['’]?ve aimed\b",
-            r"^\s*let me know\b",
-            r"^\s*hãy cho tôi biết\b",
-            r"^\s*nếu bạn muốn\b",
-            r"^\s*i hope this helps\b",
-            r"^\s*as an ai\b",
-            r"^\s*okay,\s*let[’']?s\s+analy[sz]e\b",
-            r"^\s*let[’']?s\s+analy[sz]e\b",
-            r"^\s*question\s*:",
-            r"^\s*answer\s*:"
-        ]
-        for line in lines:
-            if any(re.search(pattern, line, flags=re.IGNORECASE) for pattern in meta_patterns):
-                continue
-            cleaned.append(line)
-        text = "\n".join(cleaned).strip()
-        text = re.sub(r"\n-{3,}\s*$", "", text).strip()
-        text = re.sub(r"\(\s*This is inferred[^)]*\)", "", text, flags=re.IGNORECASE).strip()
-        text = re.sub(r"\bUncertainty exists regarding[^.]*\.", "", text, flags=re.IGNORECASE).strip()
-        return text
+        return _strip_meta_comments(text)
 
     def prepare_llm_prompt(self, prompt, model_name=None):
-        prompt = str(prompt or "").strip()
-        model_name = (model_name or self.get_llm_model_name()).lower()
-        if model_name.startswith("qwen3") and not prompt.startswith("/no_think"):
-            return "/no_think\n" + prompt
-        return prompt
+        return self.ollama_client.prepare_prompt(prompt, model_name or self.get_llm_model_name())
 
     def get_llm_provider(self):
         return "ollama"
@@ -554,131 +534,25 @@ class RagService:
         }
 
     def normalize_text(self, value):
-        text = str(value or "").lower()
-        text = unicodedata.normalize("NFD", text)
-        text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
-        text = re.sub(r"\.(pdf|docx|pptx|ppt)\b", " ", text)
-        text = re.sub(r"[_\-]+", " ", text)
-        text = re.sub(r"[^a-z0-9\s]+", " ", text)
-        return re.sub(r"\s+", " ", text).strip()
+        return _normalize_text(value)
 
     def is_vietnamese_query(self, query):
-        raw = str(query or "").lower()
-        if re.search(r"[ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]", raw):
-            return True
-        normalized = self.normalize_text(raw)
-        return any(term in normalized for term in [
-            "chuong", "tai lieu", "tom tat", "y chinh", "noi ve", "liet ke",
-            "co may", "bao nhieu", "phan nao", "muc nao", "sach", "nguon"
-        ])
+        return _is_vietnamese_query(query)
 
     def get_query_chapter_numbers(self, query):
-        normalized = self.normalize_text(query)
-        numbers = []
-        for match in re.finditer(r"\b(?:chapter|chuong+)\s*([0-9]{1,2})\b", normalized):
-            value = int(match.group(1))
-            if 1 <= value <= 40 and value not in numbers:
-                numbers.append(value)
-        return numbers
+        return _get_query_chapter_numbers(query)
 
     def is_definition_query(self, query):
-        normalized = self.normalize_text(query)
-        return bool(re.search(
-            r"\b(?:la gi|nghia la gi|viet tat cua gi|what is|what are|meaning of|stands for|means|define|definition)\b",
-            normalized
-        ))
+        return _is_definition_query(query)
 
     def extract_ambiguous_acronym(self, query):
-        raw = str(query or "").strip()
-        normalized = self.normalize_text(raw)
-        asks_definition = (
-            re.search(r"\b(?:la gi|nghia la gi|viet tat cua gi|what is|what are|meaning of|stands for|means)\b", normalized)
-            or re.fullmatch(r"[A-Za-z0-9]{2,5}\??", raw)
-        )
-        if not asks_definition:
-            return ""
-
-        candidates = []
-        patterns = [
-            r"^\s*([A-Za-z][A-Za-z0-9]{1,4})\s*(?:là|la)\s*gì\b",
-            r"^\s*([A-Za-z][A-Za-z0-9]{1,4})\s*(?:nghĩa|nghia)\s+là\s+gì\b",
-            r"^\s*([A-Za-z][A-Za-z0-9]{1,4})\s*(?:viết|viet)\s+tắt\s+của\s+gì\b",
-            r"^\s*([A-Za-z][A-Za-z0-9]{1,4})\s*\?$",
-            r"\bwhat\s+(?:is|are)\s+([A-Za-z][A-Za-z0-9]{1,4})\b",
-            r"\b([A-Za-z][A-Za-z0-9]{1,4})\s+(?:means|stands for)\b"
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, raw, flags=re.IGNORECASE)
-            if match:
-                candidates.append(match.group(1))
-
-        if not candidates:
-            leading_part = re.split(r"\b(?:trong|in)\b", raw, maxsplit=1, flags=re.IGNORECASE)[0]
-            first_word = re.match(r"\s*([A-Za-z][A-Za-z0-9]*)\b", leading_part)
-            if first_word and len(first_word.group(1)) > 5:
-                return ""
-            leading_tokens = re.findall(r"\b[A-Za-z][A-Za-z0-9]*\b", leading_part)
-            if len(leading_tokens) > 1:
-                return ""
-            tokens = re.findall(r"\b[A-Za-z][A-Za-z0-9]{1,4}\b", leading_part)
-            stop = {"what", "is", "are", "mean", "means", "trong", "file", "pdf"}
-            candidates = [token for token in tokens if token.lower() not in stop]
-
-        for candidate in candidates:
-            if 2 <= len(candidate) <= 5 and re.fullmatch(r"[A-Za-z][A-Za-z0-9]{1,4}", candidate):
-                return candidate.upper()
-        return ""
+        return _extract_ambiguous_acronym(query)
 
     def extract_definition_term(self, query):
-        raw = str(query or "").strip()
-        normalized = self.normalize_text(raw)
-        if not self.is_definition_query(query):
-            return ""
-        patterns = [
-            r"^\s*(.+?)\s+(?:là|la)\s+gì\b",
-            r"^\s*(.+?)\s+(?:nghĩa|nghia)\s+là\s+gì\b",
-            r"\bwhat\s+(?:is|are)\s+(.+?)(?:\?|$)",
-            r"\bdefine\s+(.+?)(?:\?|$)",
-            r"\bmeaning\s+of\s+(.+?)(?:\?|$)"
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, raw, flags=re.IGNORECASE)
-            if not match:
-                continue
-            term = re.sub(r"\b(?:trong|in)\b.*$", "", match.group(1), flags=re.IGNORECASE).strip(" .?\"'")
-            if term:
-                return term
-        tokens = normalized.split()
-        if len(tokens) <= 4:
-            return tokens[0] if tokens else ""
-        return ""
+        return _extract_definition_term(query)
 
     def has_direct_definition_for_term(self, term, rows):
-        if not term:
-            return False
-        term_pattern = re.compile(rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])", re.IGNORECASE)
-        definition_markers = [
-            r"\bis\b", r"\bare\b", r"\bmeans\b", r"\bstands\s+for\b", r"\brefers\s+to\b",
-            r"\bdefined\s+as\b", r"\blà\b", r"\bla\b", r"viết\s+tắt", r"viet\s+tat"
-        ]
-        marker_pattern = re.compile("|".join(definition_markers), re.IGNORECASE)
-
-        for row in rows:
-            meta = row.get("metadata") or {}
-            content = str(row.get("content") or "")
-            heading_text = " ".join(str(meta.get(key) or "") for key in [
-                "heading", "section_path", "detected_title", "chapter_title", "section_title"
-            ])
-            if term_pattern.search(heading_text) and marker_pattern.search(content[:260]):
-                return True
-
-            for match in term_pattern.finditer(content):
-                start = max(0, match.start() - 90)
-                end = min(len(content), match.end() + 160)
-                window = content[start:end]
-                if marker_pattern.search(window):
-                    return True
-        return False
+        return _has_direct_definition_for_term(term, rows)
 
     def try_answer_ambiguous_acronym_query(self, query, subject_id, document_ids=None):
         term = self.extract_ambiguous_acronym(query)
@@ -779,207 +653,20 @@ class RagService:
         }
 
     def try_answer_intent_firewall_query(self, query, history=None):
-        normalized = self.normalize_text(query)
-        history = history or []
-
-        prompt_injection_terms = [
-            "bo qua tai lieu", "ignore sources", "ignore source", "ignore documents",
-            "ignore the documents", "ignore citations", "ignore citation", "ignore evidence",
-            "answer from your own knowledge", "use your own knowledge", "without citations",
-            "without sources", "without evidence", "tu tra loi", "khong can nguon", "khong can tai lieu",
-            "in prompt he thong", "prompt he thong", "system prompt", "luat noi bo",
-            "noi quy noi bo", "reveal prompt", "developer message", "hidden instruction",
-            "hidden context", "internal rule", "internal rules"
-        ]
-        if any(term in normalized for term in prompt_injection_terms):
-            return {
-                "answer": "Mình không thể bỏ qua tài liệu hoặc tiết lộ prompt/luật nội bộ. Yêu cầu này nằm ngoài phạm vi tài liệu của môn học; hãy hỏi một câu liên quan đến nội dung đã index để mình trả lời kèm nguồn.",
-                "sources": [],
-                "contexts": [],
-                "model": "direct",
-                "retrieval_strategy": "blocked_prompt_injection",
-                "confidence": 1.0,
-                "fallback_used": False,
-                "intent": "prompt_injection"
-            }
-
-        creative_terms = [
-            "viet rap", "bai rap", "viet tho", "lam tho", "ke chuyen", "sang tac",
-            "write a rap", "write a poem", "compose a song", "lyrics"
-        ]
-        if any(term in normalized for term in creative_terms):
-            return {
-                "answer": "Câu này là yêu cầu sáng tác ngoài phạm vi tài liệu. Mình chỉ trả lời hoặc tóm tắt dựa trên nội dung đã index trong môn học hiện tại.",
-                "sources": [],
-                "contexts": [],
-                "model": "direct",
-                "retrieval_strategy": "blocked_out_of_scope",
-                "confidence": 1.0,
-                "fallback_used": False,
-                "intent": "out_of_scope"
-            }
-
-        small_talk_terms = [
-            "tao dep trai", "toi dep trai", "minh dep trai", "tao xinh", "toi xinh",
-            "toi buon", "minh buon", "tao buon", "chan qua", "toi chan",
-            "ban thay toi", "ban nghi toi", "toi la ai", "tao la ai",
-            "ok", "oke", "haha", "hihi", "hehe", "lol"
-        ]
-        if any(term == normalized or normalized.startswith(term + " ") for term in small_talk_terms):
-            return {
-                "answer": "Câu này không cần tra tài liệu, nên mình không chạy retrieval hay gắn nguồn. Nếu bạn muốn học từ tài liệu đã index, hãy hỏi một câu cụ thể về nội dung học tập.",
-                "sources": [],
-                "contexts": [],
-                "model": "direct",
-                "retrieval_strategy": "blocked_small_talk",
-                "confidence": 1.0,
-                "fallback_used": False,
-                "intent": "small_talk"
-            }
-
-        if any(term in normalized for term in ["asdf", "qwer", "zxcv", "hahaha"]):
-            return {
-                "answer": "Mình không thấy câu hỏi này đủ rõ để tra trong tài liệu. Bạn hãy hỏi cụ thể theo tên file, chương, mục hoặc thuật ngữ trong tài liệu đã index.",
-                "sources": [],
-                "contexts": [],
-                "model": "direct",
-                "retrieval_strategy": "blocked_out_of_scope",
-                "confidence": 1.0,
-                "fallback_used": False,
-                "intent": "out_of_scope"
-            }
-
-        if "gomaa" in normalized and "maintainable applications" in normalized:
-            return {
-                "answer": "Mình không tìm thấy nội dung về **maintainable applications** trong tài liệu được chỉ định đã index, nên mình không suy diễn từ nguồn không liên quan.",
-                "sources": [],
-                "contexts": [],
-                "model": "direct",
-                "retrieval_strategy": "blocked_wrong_source_hint",
-                "confidence": 1.0,
-                "fallback_used": False,
-                "intent": "out_of_scope"
-            }
-        if "ddia" in normalized and "uml notation" in normalized:
-            return {
-                "answer": "Mình không tìm thấy nội dung về **UML notation** trong tài liệu được chỉ định đã index, nên mình không suy diễn từ nguồn không liên quan.",
-                "sources": [],
-                "contexts": [],
-                "model": "direct",
-                "retrieval_strategy": "blocked_wrong_source_hint",
-                "confidence": 1.0,
-                "fallback_used": False,
-                "intent": "out_of_scope"
-            }
-
-        exam_terms = [
-            "dap an bai tap", "dap an de thi", "answer key", "exam answer", "cho dap an",
-            "ap an bai tap", "ap an de thi", "cho ap an",
-            "giai ho bai tap", "lam bai tap giup", "cheat", "copy dap an", "copy ap an"
-        ]
-        if any(term in normalized for term in exam_terms):
-            return {
-                "answer": "Mình không cung cấp đáp án chép sẵn. Bạn có thể hỏi khái niệm, chương, hoặc yêu cầu giải thích cách làm dựa trên tài liệu.",
-                "sources": [],
-                "contexts": [],
-                "model": "direct",
-                "retrieval_strategy": "blocked_exam_answer_request",
-                "confidence": 1.0,
-                "fallback_used": False,
-                "intent": "out_of_scope"
-            }
-
-        short_followup_terms = [
-            "liet ke ra di", "liet ke ra i", "liet ke ra giup toi", "noi tiep", "giai thich them",
-            "giai thich ky hon", "noi ky hon", "noi ki hon", "so sanh di", "cai do la gi", "phan do la gi",
-            "list them", "continue", "explain more", "compare it"
-        ]
-        if not history and any(term == normalized or normalized.startswith(term) for term in short_followup_terms):
-            return {
-                "answer": "Mình không có đủ ngữ cảnh để biết bạn muốn nói tới tài liệu, chương hoặc mục nào. Bạn hãy hỏi cụ thể hơn, ví dụ: “Liệt kê các mục trong chương 2 của Gomaa”.",
-                "sources": [],
-                "contexts": [],
-                "model": "direct",
-                "retrieval_strategy": "blocked_ambiguous_followup",
-                "confidence": 1.0,
-                "fallback_used": False,
-                "intent": "ambiguous_followup"
-            }
-
-        if not self.is_likely_document_question(query, history):
-            return {
-                "answer": f"Câu hỏi `{query}` chưa có dấu hiệu là câu hỏi về tài liệu đã index, nên mình không chạy retrieval hay gắn nguồn. Hãy hỏi một câu cụ thể về nội dung học tập hoặc khái niệm trong tài liệu.",
-                "sources": [],
-                "contexts": [],
-                "model": "direct",
-                "retrieval_strategy": "blocked_non_document_intent",
-                "confidence": 1.0,
-                "fallback_used": False,
-                "intent": "non_document_question"
-            }
-
-        return None
+        return _classify_intent(
+            query,
+            history=history,
+            is_likely_document_question=self.is_likely_document_question,
+        )
 
     def is_likely_document_question(self, query, history=None):
-        normalized = self.normalize_text(query)
-        tokens = normalized.split()
-        if not normalized:
-            return False
-
-        document_terms = [
-            "tai lieu", "file", "pdf", "sach", "book", "document", "source", "nguon",
-            "chuong", "chapter", "section", "muc", "phan", "trang", "page",
-            "gomaa", "ddia", "uml", "comet", "data model", "database", "normalization",
-            "use case", "class diagram", "reliability", "scalability", "maintainability",
-            "software modeling", "design", "object oriented"
-        ]
-        learning_terms = [
-            "tom tat", "summary", "summarize", "y chinh", "main idea", "noi dung",
-            "noi ve", "noi gi", "giai thich", "explain", "so sanh", "compare",
-            "liet ke", "list", "cac phan", "khac nhau", "giong nhau", "mau thuan",
-            "definition", "define", "nghia la gi", "la gi", "what is", "how many"
-        ]
-        if any(term in normalized for term in document_terms):
-            return True
-        if any(term in normalized for term in learning_terms):
-            return True
-        if history and self.is_short_followup_query(query):
-            return True
-        if "?" in str(query or "") and len(tokens) >= 4:
-            personal_terms = {"toi", "tao", "minh", "ban", "dep", "xau", "buon", "vui", "yeu", "ghet"}
-            if not any(term in tokens for term in personal_terms):
-                return True
-        return False
+        return _is_likely_document_question(query, history)
 
     def tokenize(self, value):
-        stopwords = {
-            "la", "gi", "co", "cua", "cac", "nhung", "mot", "nay", "kia",
-            "trong", "ve", "cho", "toi", "minh", "hay", "neu", "thi", "va",
-            "the", "nao", "duoc", "khong", "file", "pdf", "tai", "lieu",
-            "mon", "chuong", "chapter", "please", "what", "how", "many"
-        }
-        return [
-            term for term in self.normalize_text(value).split()
-            if len(term) >= 3 and term not in stopwords
-        ]
+        return _tokenize(value)
 
     def rows_from_chroma_result(self, result):
-        rows = []
-        ids = result.get("ids", [])
-        for i, (doc, meta) in enumerate(zip(result.get("documents", []), result.get("metadatas", []))):
-            rows.append({
-                "id": ids[i] if i < len(ids) else f"{meta.get('document_id', 'unknown')}_{i}",
-                "content": doc,
-                "metadata": meta,
-                "dense_similarity": 0.0,
-                "keyword_score": 0.0,
-                "rrf_score": 0.0,
-                "rerank_score": 0.0
-            })
-        return sorted(rows, key=lambda row: (
-            str(row["metadata"].get("document_id", "")),
-            int(row["metadata"].get("chunk_index", 0))
-        ))
+        return _rows_from_chroma_result(result)
 
     def document_filter_matches_rows(self, rows, document_ids=None):
         allowed = set(self.normalize_document_ids(document_ids))
@@ -1183,15 +870,7 @@ class RagService:
         return None
 
     def is_clear_out_of_scope_query(self, normalized):
-        out_of_scope_terms = [
-            "hom nay thu may", "ngay may", "may gio", "thoi tiet", "weather",
-            "tin tuc", "news", "gia vang", "gia bitcoin", "ti gia",
-            "mua laptop", "nen mua", "tu van mua", "shopping",
-            "viet code", "lap trinh giup", "fix code", "debug code",
-            "chien tranh", "lich su the gioi", "bong da", "the thao",
-            "nau an", "cong thuc nau", "du lich", "dat ve"
-        ]
-        return any(term in normalized for term in out_of_scope_terms)
+        return _is_clear_out_of_scope_query(normalized)
 
     def try_answer_document_list_query(self, query, subject_id, document_ids=None):
         normalized = self.normalize_text(query)
@@ -1238,62 +917,22 @@ class RagService:
         }
 
     def is_outline_query(self, query):
-        normalized = self.normalize_text(query)
-        return any(term in normalized for term in [
-            "cac chuong", "danh sach chuong", "liet ke chuong", "muc luc",
-            "co may chuong", "bao nhieu chuong", "so chuong", "nhung chuong", "chuong nao",
-            "chapters", "chapter list", "number of chapter", "table of contents"
-        ])
+        return _is_outline_query(query)
 
     def is_section_query(self, query):
-        normalized = self.normalize_text(query)
-        return any(term in normalized for term in [
-            "cac phan", "phan nao", "cac muc", "muc nao", "section", "subsection",
-            "liet ke ra", "liet ke cac phan", "list sections", "main sections"
-        ])
+        return _is_section_query(query)
 
     def is_summary_query(self, query):
-        normalized = self.normalize_text(query)
-        return any(term in normalized for term in [
-            "noi ve gi", "tom tat", "y chinh", "main idea", "summary",
-            "summarize", "explain", "giai thich", "noi dung"
-        ])
+        return _is_summary_query(query)
 
     def is_document_summary_query(self, query):
-        normalized = self.normalize_text(query)
-        if self.get_query_chapter_numbers(query):
-            return False
-        if self.is_outline_query(query) or self.is_section_query(query):
-            return False
-        summary_terms = [
-            "tom tat tai lieu", "tom tat cac y chinh", "cac y chinh cua tai lieu",
-            "y chinh cua tai lieu", "noi dung chinh cua tai lieu", "document summary",
-            "summary of this document", "main ideas in this document",
-            "main ideas of this document", "summarize the main ideas",
-            "file gomaa hien co noi dung gi", "file ddia hien co noi dung gi",
-            "file nay hien co noi dung gi", "file nay co noi dung gi",
-            "file gomaa co noi dung gi", "file ddia co noi dung gi"
-        ]
-        return any(term in normalized for term in summary_terms)
+        return _is_document_summary_query(query)
 
     def is_short_followup_query(self, query):
-        normalized = self.normalize_text(query).strip()
-        followup_terms = [
-            "liet ke ra", "liet ke ra di", "noi tiep", "giai thich them",
-            "giai thich ky hon", "noi ky hon", "noi ki hon", "ro hon", "chi tiet hon", "so voi chuong 1", "so voi chuong 2",
-            "list them", "continue", "explain more", "more detail", "compare with chapter"
-        ]
-        return len(normalized.split()) <= 6 and any(term == normalized or normalized.startswith(term) for term in followup_terms)
+        return _is_short_followup_query(query)
 
     def is_conflict_sensitive_query(self, query):
-        normalized = self.normalize_text(query)
-        if any(term in normalized for term in ["so voi chuong", "compare with chapter"]):
-            return False
-        return any(term in normalized for term in [
-            "khac nhau", "mau thuan", "conflict", "different", "compare",
-            "use case", "class diagram", "database normalization", "normalization",
-            "nguon nao", "noi ve"
-        ])
+        return _is_conflict_sensitive_query(query)
 
     def body_rows(self, rows):
         return [
@@ -1330,10 +969,7 @@ class RagService:
         return order, grouped
 
     def is_duplicate_sensitive_query(self, query):
-        normalized = self.normalize_text(query)
-        return any(term in normalized for term in [
-            "trung", "trung lap", "giong nhau", "ban giong nhau", "duplicate", "same content", "same document"
-        ])
+        return _is_duplicate_sensitive_query(query)
 
     def duplicate_labels_for_rows(self, rows):
         occurrences = defaultdict(list)
@@ -2139,6 +1775,16 @@ Answer:
             header = f"### Chapter {chapter_number}" + (f": {title}" if title else "")
             if not answer.lstrip().startswith(header):
                 answer = f"{header}\n\n{answer}"
+            body = answer.replace(header, "", 1).strip()
+            bulletish_points = len(re.findall(r"(^|\n)\s*([-*•]|\d+[.)])\s+", body))
+            if bulletish_points < 2:
+                sentences = [
+                    sentence.strip(" .")
+                    for sentence in re.split(r"(?<=[.!?])\s+", body)
+                    if len(sentence.strip()) > 35
+                ]
+                if len(sentences) >= 2:
+                    answer = header + "\n\n" + "\n".join(f"- {sentence}." for sentence in sentences[:4])
         return {
             "answer": answer,
             "sources": sources,
@@ -2248,105 +1894,38 @@ Answer:
 
     def dense_candidates(self, query, subject_id, model_name, document_ids=None):
         start = time.time()
-        if self.collection.count() == 0:
+        count = self.collection_count()
+        if count == 0:
             return []
         query_embedding = self.embed_query_cached(query, model_name)
-        n_results = min(max(self.candidate_pool, self.rerank_top_k), self.collection.count())
-        result = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=n_results,
+        n_results = min(max(self.candidate_pool, self.rerank_top_k), count)
+        candidates = _dense_candidates(
+            self.collection,
+            query_embedding,
             where=self.build_scope_filter(subject_id, document_ids),
-            include=["documents", "metadatas", "distances"]
+            n_results=n_results,
         )
-        candidates = []
-        docs = result.get("documents", [[]])[0] if result.get("documents") else []
-        metas = result.get("metadatas", [[]])[0] if result.get("metadatas") else []
-        distances = result.get("distances", [[]])[0] if result.get("distances") else []
-        ids = result.get("ids", [[]])[0] if result.get("ids") else []
-        for rank, doc in enumerate(docs):
-            distance = distances[rank] if rank < len(distances) else 1
-            candidates.append({
-                "id": ids[rank] if rank < len(ids) else f"dense_{rank}",
-                "content": doc,
-                "metadata": metas[rank],
-                "dense_similarity": round(1 - distance, 4),
-                "dense_rank": rank + 1,
-                "keyword_rank": None,
-                "keyword_score": 0.0,
-                "rrf_score": 0.0,
-                "rerank_score": 0.0
-            })
         print(f"[RAG] vector search {len(candidates)} candidates in {time.time() - start:.2f}s", flush=True)
         return candidates
 
     def keyword_candidates(self, query, rows):
         start = time.time()
-        query_terms = self.tokenize(query)
-        if not query_terms:
-            return []
-        docs_tokens = [self.tokenize(f"{row['metadata'].get('document_name', '')} {row['metadata'].get('heading', '')} {row['content']}") for row in rows]
-        doc_freq = Counter(term for tokens in docs_tokens for term in set(tokens))
-        total_docs = max(len(rows), 1)
-        scored = []
-        for row, tokens in zip(rows, docs_tokens):
-            counts = Counter(tokens)
-            score = 0.0
-            for term in query_terms:
-                if counts[term] <= 0:
-                    continue
-                idf = math.log((total_docs - doc_freq[term] + 0.5) / (doc_freq[term] + 0.5) + 1)
-                score += counts[term] * idf
-            if score > 0:
-                clone = dict(row)
-                clone["keyword_score"] = round(score, 4)
-                scored.append(clone)
-        scored.sort(key=lambda row: -row["keyword_score"])
-        for rank, row in enumerate(scored):
-            row["keyword_rank"] = rank + 1
-        print(f"[RAG] keyword search {len(scored[:self.candidate_pool])} candidates in {time.time() - start:.2f}s", flush=True)
-        return scored[:self.candidate_pool]
+        scored = _keyword_candidates(query, rows, self.tokenize, self.candidate_pool)
+        print(f"[RAG] keyword search {len(scored)} candidates in {time.time() - start:.2f}s", flush=True)
+        return scored
 
     def metadata_candidates(self, query, rows):
         start = time.time()
-        normalized = self.normalize_text(query)
-        query_chapters = set(self.get_query_chapter_numbers(query))
-        query_terms = set(self.tokenize(query))
-        candidates = []
-        for row in rows:
-            meta = row.get("metadata", {})
-            haystack = self.normalize_text(
-                " ".join([
-                    str(meta.get("document_name") or ""),
-                    str(meta.get("chapter_title") or ""),
-                    str(meta.get("section_path") or meta.get("heading") or ""),
-                    str(meta.get("source_variant") or ""),
-                    str(meta.get("source_family") or "")
-                ])
-            )
-            score = 0.0
-            chapter_number = str(meta.get("chapter_number") or "").strip()
-            if query_chapters and chapter_number in query_chapters:
-                score += 4.0
-            if "gomaa" in normalized and "gomaa" in haystack:
-                score += 2.0
-            if "ddia" in normalized and "ddia" in haystack:
-                score += 2.0
-            if "modified" in normalized and "modified" in haystack:
-                score += 1.5
-            if "original" in normalized and "original" in haystack:
-                score += 1.5
-            score += sum(0.15 for term in query_terms if len(term) > 2 and term in haystack)
-            if score <= 0:
-                continue
-            clone = dict(row)
-            clone["metadata_score"] = round(score, 4)
-            clone["metadata_rank"] = 0
-            candidates.append(clone)
-        candidates.sort(key=lambda row: -row.get("metadata_score", 0.0))
-        for rank, row in enumerate(candidates):
-            row["metadata_rank"] = rank + 1
-        print(f"[RAG] metadata search {len(candidates[:self.candidate_pool])} candidates in {time.time() - start:.2f}s", flush=True)
-        return candidates[:self.candidate_pool]
+        candidates = _metadata_candidates(
+            query,
+            rows,
+            self.normalize_text,
+            self.tokenize,
+            self.get_query_chapter_numbers,
+            self.candidate_pool,
+        )
+        print(f"[RAG] metadata search {len(candidates)} candidates in {time.time() - start:.2f}s", flush=True)
+        return candidates
 
     def branch_trace(self, name, rows, duration_ms, status="done"):
         previews = []
@@ -2399,57 +1978,25 @@ Answer:
         return branch_results, branch_trace
 
     def reciprocal_rank_fusion(self, dense_rows, keyword_rows, metadata_rows=None):
-        fused = {}
-        for source_rows, rank_key in [
-            (dense_rows, "dense_rank"),
-            (keyword_rows, "keyword_rank"),
-            (metadata_rows or [], "metadata_rank")
-        ]:
-            for index, row in enumerate(source_rows):
-                item = fused.setdefault(row["id"], dict(row))
-                rank = row.get(rank_key) or index + 1
-                item["rrf_score"] = item.get("rrf_score", 0.0) + 1.0 / (60 + rank)
-                item["dense_similarity"] = max(item.get("dense_similarity", 0.0), row.get("dense_similarity", 0.0))
-                item["keyword_score"] = max(item.get("keyword_score", 0.0), row.get("keyword_score", 0.0))
-                item["metadata_score"] = max(item.get("metadata_score", 0.0), row.get("metadata_score", 0.0))
-        rows = list(fused.values())
-        rows.sort(key=lambda row: -row["rrf_score"])
-        return rows[:self.candidate_pool]
+        return _fuse_dense_keyword_metadata(dense_rows, keyword_rows, metadata_rows, self.candidate_pool)
 
     def merge_ranked_rows(self, ranked_groups):
-        merged = {}
-        for group_index, rows in enumerate(ranked_groups):
-            for rank, row in enumerate(rows):
-                item = merged.setdefault(row["id"], dict(row))
-                bonus = 1.0 / (40 + rank + group_index + 1)
-                item["rrf_score"] = max(item.get("rrf_score", 0.0), row.get("rrf_score", 0.0)) + bonus
-                item["dense_similarity"] = max(item.get("dense_similarity", 0.0), row.get("dense_similarity", 0.0))
-                item["keyword_score"] = max(item.get("keyword_score", 0.0), row.get("keyword_score", 0.0))
-                item["rerank_score"] = max(item.get("rerank_score", 0.0), row.get("rerank_score", 0.0))
-        result = list(merged.values())
-        result.sort(key=lambda row: (-row.get("rerank_score", 0.0), -row.get("rrf_score", 0.0), -row.get("dense_similarity", 0.0)))
-        return result[:self.candidate_pool]
+        return _merge_ranked_rows(ranked_groups, self.candidate_pool)
 
     def rerank_candidates(self, query, candidates):
         if not candidates:
             return []
         start = time.time()
-        if not self.enable_reranker:
-            candidates.sort(key=lambda row: -row["rrf_score"])
-            print(f"[RAG] reranker disabled; using RRF only in {time.time() - start:.2f}s", flush=True)
-            return candidates[:self.rerank_top_k]
-        try:
-            pairs = [[query, row["content"]] for row in candidates]
-            scores = self.get_reranker().predict(pairs)
-            for row, score in zip(candidates, scores):
-                row["rerank_score"] = float(score)
-            candidates.sort(key=lambda row: -row["rerank_score"])
-            print(f"[RAG] rerank {len(candidates)} candidates in {time.time() - start:.2f}s", flush=True)
-            return candidates
-        except Exception as e:
-            print(f"[RAG] reranker unavailable, using RRF only: {e}", flush=True)
-            candidates.sort(key=lambda row: -row["rrf_score"])
-            return candidates
+        result = _rerank_candidates(
+            query,
+            candidates,
+            enable_reranker=self.enable_reranker,
+            get_reranker=self.get_reranker,
+            top_k=self.rerank_top_k,
+        )
+        mode = "rerank" if self.enable_reranker else "RRF only"
+        print(f"[RAG] {mode} {len(result)} candidates in {time.time() - start:.2f}s", flush=True)
+        return result
 
     def select_context(self, ranked_rows):
         if not ranked_rows:
@@ -2617,24 +2164,7 @@ Answer:
         )
 
     def parse_json_object(self, text):
-        text = str(text or "").strip()
-        text = re.sub(r"^```(?:json)?", "", text, flags=re.IGNORECASE).strip()
-        text = re.sub(r"```$", "", text).strip()
-        if not text or text == "{}":
-            raise ValueError("small agent returned empty JSON")
-        try:
-            data = json.loads(text)
-            if data == {}:
-                raise ValueError("small agent returned empty JSON")
-            return data
-        except Exception:
-            match = re.search(r"\{.*\}", text, flags=re.DOTALL)
-            if not match:
-                raise
-            data = json.loads(match.group(0))
-            if data == {}:
-                raise ValueError("small agent returned empty JSON")
-            return data
+        return _parse_json_object(text)
 
     def plan_agentic_queries(self, query):
         if self.should_use_small_llm_agent() and self.agentic_planner_model:
@@ -2944,12 +2474,7 @@ JSON schema:
         return "\n".join(lines)
 
     def should_rewrite_query(self, query, history):
-        normalized = self.normalize_text(query)
-        if not history:
-            return False
-        return len(normalized.split()) <= 6 or any(term in normalized for term in [
-            "no", "do", "nay", "kia", "chi tiet hon", "giai thich them", "tiep", "why", "more"
-        ])
+        return _should_rewrite_query(query, history)
 
     def rewrite_query_if_needed(self, query, history=None, subject_memory=""):
         if not self.should_rewrite_query(query, history or []):
