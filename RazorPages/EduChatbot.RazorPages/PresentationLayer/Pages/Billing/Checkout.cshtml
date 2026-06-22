@@ -1,0 +1,42 @@
+@page
+@model EduChatbot.RazorPages.Pages.Billing.CheckoutModel
+@{
+    ViewData["Title"] = "Checkout";
+}
+
+<div class="admin-page">
+    <header class="admin-page-head">
+        <div>
+            <p class="eyebrow">Mock checkout</p>
+            <h1>Confirm upgrade</h1>
+            <p>This is a demo payment. No external payment provider is called.</p>
+        </div>
+        <div class="admin-actions">
+            <a class="secondary" asp-page="/Billing/Pricing">Back to plans</a>
+        </div>
+    </header>
+
+    <section class="admin-panel checkout-card">
+        <div class="panel-title">
+            <div>
+                <h2>Upgrade to @Model.Checkout.PlanName</h2>
+                <p>Pay the demo invoice to activate this plan for the organization.</p>
+            </div>
+            <span class="metric-badge">@Model.Checkout.Status</span>
+        </div>
+        <div class="admin-table-wrap">
+            <table class="admin-table">
+                <tbody>
+                    <tr><th>Reference</th><td>@Model.Checkout.ReferenceCode</td></tr>
+                    <tr><th>Plan</th><td>@Model.Checkout.PlanName</td></tr>
+                    <tr><th>Amount</th><td>@Model.Checkout.Amount.ToString("N0") @Model.Checkout.Currency</td></tr>
+                    <tr><th>Created</th><td>@Model.Checkout.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <form method="post" asp-page-handler="Pay" class="mt-3">
+            <input type="hidden" name="id" value="@Model.Checkout.Id" />
+            <button class="primary" type="submit">Pay demo invoice</button>
+        </form>
+    </section>
+</div>

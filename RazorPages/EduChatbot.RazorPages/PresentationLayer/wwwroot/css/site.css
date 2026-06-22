@@ -775,6 +775,30 @@ h1, h2 { margin: 0; }
   color: #9ee7bf;
 }
 
+.billing-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.billing-card.current {
+  border-color: rgba(109, 124, 255, 0.56);
+  box-shadow: 0 24px 80px rgba(109, 124, 255, 0.12);
+}
+
+.plan-feature-list {
+  color: var(--muted);
+  display: grid;
+  gap: 9px;
+  line-height: 1.45;
+  margin: 0 0 18px;
+  padding-left: 18px;
+}
+
+.checkout-card {
+  max-width: 760px;
+}
+
 .muted {
   color: var(--muted);
 }
@@ -947,5 +971,6 @@ h1, h2 { margin: 0; }
   .admin-actions { justify-content: flex-start; width: 100%; }
   .admin-actions .secondary { flex: 1 1 180px; }
   .admin-form-grid, .membership-form { grid-template-columns: 1fr; }
+  .billing-grid { grid-template-columns: 1fr; }
   .panel-title { flex-direction: column; }
 }

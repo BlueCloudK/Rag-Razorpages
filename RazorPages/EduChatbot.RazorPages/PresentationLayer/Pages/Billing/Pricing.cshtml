@@ -1,0 +1,55 @@
+@page
+@model EduChatbot.RazorPages.Pages.Billing.PricingModel
+@{
+    ViewData["Title"] = "Pricing";
+}
+
+<div class="admin-page">
+    <header class="admin-page-head">
+        <div>
+            <p class="eyebrow">Organization billing</p>
+            <h1>Choose a plan</h1>
+            <p>Plans apply to the whole organization. Checkout is mocked for demo and grading.</p>
+        </div>
+        <div class="admin-actions">
+            <a class="secondary" asp-page="/Billing/Index">Back to billing</a>
+        </div>
+    </header>
+
+    <section class="billing-grid">
+        @foreach (var plan in Model.Plans)
+        {
+            <article class="admin-panel billing-card @(plan.IsCurrent ? "current" : "")">
+                <div class="panel-title">
+                    <div>
+                        <h2>@plan.Name</h2>
+                        <p>@(plan.MonthlyPrice == 0 ? "Free" : $"{plan.MonthlyPrice:N0} {plan.Currency}/month")</p>
+                    </div>
+                    @if (plan.IsCurrent)
+                    {
+                        <span class="metric-badge safe">Current</span>
+                    }
+                </div>
+                <ul class="plan-feature-list">
+                    <li>@(plan.IsUnlimited ? "Unlimited" : plan.MaxQuestionsPerDay) questions/day</li>
+                    <li>@(plan.IsUnlimited ? "Unlimited" : plan.MaxDocuments) documents</li>
+                    <li>@(plan.IsUnlimited ? "Unlimited" : plan.MaxSubjects) subjects</li>
+                    <li>@(plan.IsUnlimited ? "Unlimited" : plan.MaxMembers) members</li>
+                    <li>@(plan.IsUnlimited ? "Unlimited" : $"{plan.MaxFileSizeMb} MB") per file</li>
+                    <li>Gemini: @(plan.AllowGemini || plan.IsUnlimited ? "Enabled" : "Disabled")</li>
+                </ul>
+                @if (plan.IsCurrent)
+                {
+                    <button class="secondary" disabled>Current plan</button>
+                }
+                else
+                {
+                    <form method="post" asp-page-handler="Checkout">
+                        <input type="hidden" name="planName" value="@plan.Name" />
+                        <button class="primary" type="submit">Choose @plan.Name</button>
+                    </form>
+                }
+            </article>
+        }
+    </section>
+</div>
