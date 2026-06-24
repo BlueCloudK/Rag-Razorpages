@@ -491,6 +491,313 @@ button, input, textarea { font: inherit; }
 
 .navbar a, footer { color: var(--muted) !important; }
 
+.raglab-page {
+  display: grid;
+  gap: 18px;
+}
+
+.raglab-hero,
+.raglab-panel,
+.raglab-card {
+  background: rgba(23, 26, 33, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.raglab-hero {
+  align-items: flex-end;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 24px;
+}
+
+.raglab-hero h1 {
+  font-size: clamp(2rem, 4vw, 3.1rem);
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.raglab-hero p:not(.eyebrow),
+.raglab-panel p,
+.raglab-card small,
+.raglab-card span {
+  color: var(--muted);
+}
+
+.raglab-status {
+  background: #11141b;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  gap: 4px;
+  min-width: 190px;
+  padding: 14px;
+}
+
+.raglab-status span,
+.raglab-pill,
+.raglab-metric-row span,
+.raglab-cases span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.raglab-status strong {
+  color: var(--text);
+}
+
+.raglab-status.ok {
+  border-color: rgba(40, 180, 107, 0.45);
+}
+
+.raglab-status.warn {
+  border-color: rgba(201, 154, 36, 0.5);
+}
+
+.raglab-grid.metrics {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.raglab-card {
+  display: grid;
+  gap: 8px;
+  min-height: 126px;
+  padding: 18px;
+}
+
+.raglab-card strong {
+  font-size: 1.85rem;
+  line-height: 1;
+}
+
+.raglab-two {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.72fr);
+}
+
+.raglab-two.wide-left {
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+}
+
+.raglab-panel {
+  min-width: 0;
+  padding: 18px;
+}
+
+.raglab-panel-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.raglab-panel h2 {
+  font-size: 1.08rem;
+  font-weight: 850;
+}
+
+.raglab-pill {
+  background: #20233b;
+  border: 1px solid #384172;
+  border-radius: 999px;
+  color: #c7d0ff;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.raglab-pipeline,
+.raglab-docs,
+.raglab-cases,
+.raglab-commands,
+.raglab-metric-list {
+  display: grid;
+  gap: 10px;
+}
+
+.raglab-step {
+  align-items: flex-start;
+  background: #10131a;
+  border: 1px solid #283044;
+  border-radius: 9px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 30px 1fr;
+  padding: 12px;
+}
+
+.raglab-step span {
+  align-items: center;
+  background: #26315d;
+  border: 1px solid #667eea;
+  border-radius: 8px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 900;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.raglab-step p,
+.raglab-panel p,
+.raglab-kv {
+  margin: 0;
+}
+
+.raglab-kv {
+  display: grid;
+  gap: 10px;
+}
+
+.raglab-kv div {
+  align-items: center;
+  border-bottom: 1px solid #252b38;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding-bottom: 10px;
+}
+
+.raglab-kv dt {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.raglab-kv dd {
+  color: var(--text);
+  font-weight: 850;
+  margin: 0;
+  max-width: 70%;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.raglab-metric-row {
+  align-items: center;
+  background: #10131a;
+  border: 1px solid #283044;
+  border-radius: 9px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(140px, 1fr) 54px;
+  padding: 12px;
+}
+
+.raglab-metric-row strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.raglab-meter {
+  background: #242936;
+  border-radius: 999px;
+  height: 9px;
+  overflow: hidden;
+}
+
+.raglab-meter i {
+  background: linear-gradient(90deg, var(--brand), var(--good));
+  display: block;
+  height: 100%;
+}
+
+.raglab-table-wrap {
+  overflow-x: auto;
+}
+
+.raglab-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.raglab-table th,
+.raglab-table td {
+  border-bottom: 1px solid #252b38;
+  padding: 10px 8px;
+  text-align: left;
+}
+
+.raglab-table th {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.raglab-docs div,
+.raglab-cases article,
+.raglab-empty,
+.raglab-commands code {
+  background: #10131a;
+  border: 1px solid #283044;
+  border-radius: 9px;
+  padding: 12px;
+}
+
+.raglab-docs div {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.raglab-docs strong,
+.raglab-cases strong {
+  overflow-wrap: anywhere;
+}
+
+.raglab-docs span,
+.raglab-cases p {
+  color: var(--muted);
+}
+
+.raglab-cases article.failed {
+  border-color: rgba(227, 93, 106, 0.45);
+}
+
+.raglab-cases p {
+  margin: 8px 0 0;
+}
+
+.raglab-empty.success {
+  border-color: rgba(40, 180, 107, 0.45);
+  color: #adf0cb;
+}
+
+.raglab-commands code {
+  color: #dbe3ff;
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 980px) {
+  .raglab-grid.metrics,
+  .raglab-two,
+  .raglab-two.wide-left {
+    grid-template-columns: 1fr;
+  }
+
+  .raglab-hero,
+  .raglab-panel-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .raglab-metric-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .workspace {
   max-width: 1120px;
   margin: 0 auto;

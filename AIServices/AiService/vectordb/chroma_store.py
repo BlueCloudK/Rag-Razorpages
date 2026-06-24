@@ -4,9 +4,6 @@ import chromadb
 
 
 def build_scope_filter(subject_id, document_ids=None):
-    allowed_ids = [str(doc_id) for doc_id in (document_ids or []) if str(doc_id).strip()]
-    if allowed_ids:
-        return {"document_id": {"$in": allowed_ids}}
     return {"subject_id": subject_id}
 
 

@@ -55,7 +55,10 @@ namespace ServiceLayer.Services
             services.AddScoped<ISubjectService, SubjectService>();
             services.AddScoped<IDocumentService, DocumentService>();
             services.AddScoped<IChatService, ChatService>();
+            services.AddScoped<IRagLabService, RagLabService>();
             services.AddHostedService<PythonAIServiceRunner>();
+            services.AddSingleton<IDocumentIndexingQueue, DocumentIndexingQueue>();
+            services.AddHostedService<DocumentIndexingWorker>();
 
             return services;
         }

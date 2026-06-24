@@ -15,6 +15,10 @@ The AI Service is still centered on `services/rag_service.py`, but large groups 
 
 The public FastAPI endpoints and response fields were not changed.
 
+The current production-demo trace contract is `rag_trace_v2`. It adds stable pipeline nodes and evidence records for the web UI and benchmark while keeping the old top-level response fields compatible.
+
+The Razor Pages app also includes an admin-only `RAG Lab` page. It reads the latest ignored benchmark JSON report and visualizes pass rate, production metrics, group scores, corpus status, good examples, failed cases, and demo commands. The page is read-only; long benchmark jobs still run through the CLI.
+
 ## Runtime Entry Points
 
 - `main.py`
@@ -81,14 +85,19 @@ Retrieval helpers are now split by responsibility:
 
 `select_context()` remains in `RagService` because it still combines duplicate grouping, citation shaping, and context-window policy.
 
+`RagService` also owns the final lightweight evidence scoring step because it combines retrieval scores with routing, duplicate/conflict policy, and citation verification.
+
 ## What Still Remains In `RagService`
 
 These parts are intentionally still in `services/rag_service.py`:
 
 - request orchestration in `generate_answer()`;
 - processing trace assembly;
+- query routing metadata (`route_query()`), because it coordinates guards and retrieval policies;
+- contextual retrieval text generation (`build_contextual_text()`), because it depends on chunk metadata and index-time storage;
 - structured handlers such as outline, chapter summary, conflict, duplicate, document summary;
 - citation/context shaping;
+- evidence scoring, context expansion, and answer-level citation verification;
 - manual context building;
 - answer post-processing;
 - small agentic workflow orchestration.
@@ -106,6 +115,40 @@ Do not move these until there is a focused test plan for each piece.
 - `chunking_report` metadata for the UI inspector.
 
 This is not a full external adaptive chunking framework. It is a lightweight local implementation for demo and observability.
+
+## Contextual Retrieval
+
+Indexing stores original chunk text as the Chroma document for display/citation, but embeds a rule-generated `contextual_text` value. The metadata also stores:
+
+- `original_text`
+- `contextual_text`
+- `context_source=rule_based`
+
+Old Chroma indexes do not contain this metadata. After changing contextual retrieval, delete runtime ChromaDB and re-index demo documents before judging runtime quality.
+
+## Evidence And Citation Verification
+
+Trace evidence records include source, page, chapter, section, vector score, keyword score, metadata boost, final score, `used`, matched chunk, and context sent to the model.
+
+Only evidence marked `used=true` should become a citation. Candidate rows with `used=false` are kept for observability but must not be rendered as sources for the final answer.
+
+`RAG Lab` consumes benchmark reports that include the same trace/evidence fields. If the response contract changes, update both the chat UI trace renderer and the benchmark report reader in the Razor Pages ServiceLayer.
+
+## Query Router
+
+`route_query()` is a rule-based router. It records `intent`, `routing_decision`, and `retrieval_policy` in `processing_trace`. It does not call a cloud model and does not implement multi-agent routing.
+
+`decompose_query()` is a small rule-based planner for comparison and multi-document prompts. It creates a few focused retrieval queries, such as one query for Gomaa and one query for DDIA, then `retrieve_query_context_agentic()` pins the best evidence from each subquery before normal evidence scoring. This prevents one strong source from hiding the other source in comparison answers. It is query decomposition, not real multi-agent RAG.
+
+The decomposition layer also covers:
+
+- chapter-vs-chapter comparisons;
+- pros/cons questions, split into benefits and limitations;
+- process/workflow questions, split into definition/components and steps.
+
+Citation verification lives in `verify_citations()`. It compares displayed source labels with selected evidence records and writes `citation_verification` into `processing_trace`. UI source blocks and benchmark checks should rely on verified/used evidence, not candidate-only rows.
+
+The optional cross-encoder reranker is wired through `RAG_ENABLE_RERANKER` and `RERANKER_MODEL`, but remains off by default. Keep that default unless you explicitly want a slower CPU rerank experiment.
 
 ## Test Commands
 

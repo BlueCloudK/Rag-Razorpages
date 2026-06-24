@@ -30,7 +30,7 @@ def extract_ambiguous_acronym(query):
         r"^\s*([A-Za-z][A-Za-z0-9]{1,4})\s*(?:nghia)\s+la\s+gi\b",
         r"^\s*([A-Za-z][A-Za-z0-9]{1,4})\s*(?:viet)\s+tat\s+cua\s+gi\b",
         r"^\s*([A-Za-z][A-Za-z0-9]{1,4})\s*\?$",
-        r"\bwhat\s+(?:is|are)\s+([A-Za-z][A-Za-z0-9]{1,4})\b",
+        r"\bwhat\s+(?:is|are)\s+([A-Za-z][A-Za-z0-9]{1,4})(?:\s*(?:\?|$)|\s+(?:in|trong|means|stand))",
         r"\b([A-Za-z][A-Za-z0-9]{1,4})\s+(?:means|stands for)\b",
     ]
     for pattern in patterns:

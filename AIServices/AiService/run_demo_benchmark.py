@@ -24,6 +24,16 @@ DEFAULT_QUALITY_SCORES = {
     "language_quality": 1.0,
     "safety_grounding": 1.0,
 }
+PRODUCTION_METRICS = [
+    "retrieval_hit",
+    "source_correctness",
+    "citation_precision",
+    "answer_coverage",
+    "hallucination_flag",
+    "conflict_handling",
+    "duplicate_handling",
+    "language_quality",
+]
 
 
 BAD_VI_PATTERNS = [
@@ -112,6 +122,38 @@ def average(values):
 
 def case_quality_score(item):
     return average((item.get("quality_scores") or {}).values())
+
+
+def production_metrics(case, response, failures, quality_scores):
+    trace = response.get("processing_trace") or {}
+    evidence = trace.get("evidence_table") or trace.get("evidence") or response.get("contexts") or []
+    sources = response.get("sources") or []
+    expected_behavior = str(case.get("expected_behavior") or "")
+    expects_grounded = expected_behavior in {"answer", "conflict"} and not case.get("expect_no_sources")
+    used_evidence = [item for item in evidence if item.get("used", True)]
+    evidence_sources = normalize(" ".join(str(item.get("source") or "") for item in used_evidence))
+    citation_precision = 1.0
+    if sources:
+        citation_precision = 1.0 if all(
+            normalize(source).replace("pdf", "").strip() in evidence_sources
+            for source in sources
+            if str(source).endswith(".pdf")
+        ) else 0.0
+    hallucination = 0.0 if any(
+        failure in failures
+        for failure in ["hallucination", "unexpected_source", "unexpected_context", "citation_mismatch"]
+    ) else 1.0
+    metrics = {
+        "retrieval_hit": 1.0 if (not expects_grounded or used_evidence or response.get("contexts")) else 0.0,
+        "source_correctness": float(quality_scores.get("source_correctness", 1.0)),
+        "citation_precision": citation_precision,
+        "answer_coverage": float(quality_scores.get("answer_completeness", 1.0)),
+        "hallucination_flag": hallucination,
+        "conflict_handling": 1.0 if expected_behavior != "conflict" or conflict_detected(response) else 0.0,
+        "duplicate_handling": 1.0 if not case.get("expected_duplicate") or duplicate_detected(response) else 0.0,
+        "language_quality": float(quality_scores.get("language_quality", 1.0)),
+    }
+    return {key: round(float(metrics.get(key, 0.0)), 3) for key in PRODUCTION_METRICS}
 
 
 def response_source_text(response, include_answer=True):
@@ -367,10 +409,12 @@ def summarize_groups(cases):
     for group, items in sorted(grouped.items()):
         passed = sum(1 for item in items if item.get("passed"))
         quality_values = [score for item in items for score in (item.get("quality_scores") or {}).values()]
+        production_values = [score for item in items for score in (item.get("production_metrics") or {}).values()]
         summary[group] = {
             "passed": passed,
             "total": len(items),
             "quality_score": average(quality_values),
+            "production_score": average(production_values),
             "failures": dict(Counter(failure for item in items for failure in item.get("failures", []))),
         }
     return summary
@@ -378,6 +422,10 @@ def summarize_groups(cases):
 
 def overall_quality(cases):
     return average(score for item in cases for score in (item.get("quality_scores") or {}).values())
+
+
+def overall_production_score(cases):
+    return average(score for item in cases for score in (item.get("production_metrics") or {}).values())
 
 
 def write_reports(results):
@@ -401,16 +449,17 @@ def write_reports(results):
         f"- Run at: {results['run_at']}",
         f"- Passed: {passed}/{total}",
         f"- Overall quality score: {results.get('quality_score', 0)}",
+        f"- Production RAG score: {results.get('production_score', 0)}",
         f"- Case file: `{results.get('case_file', '')}`",
         "",
         "## Group Summary",
         "",
-        "| Group | Passed | Quality | Top Failures |",
-        "| --- | ---: | ---: | --- |",
+        "| Group | Passed | Quality | Production | Top Failures |",
+        "| --- | ---: | ---: | ---: | --- |",
     ]
     for group, data in group_summary.items():
         top_failures = ", ".join(f"{key}:{value}" for key, value in sorted(data.get("failures", {}).items(), key=lambda item: -item[1])[:3]) or "-"
-        lines.append(f"| {group} | {data['passed']}/{data['total']} | {data['quality_score']} | {top_failures} |")
+        lines.append(f"| {group} | {data['passed']}/{data['total']} | {data['quality_score']} | {data.get('production_score', 0)} | {top_failures} |")
 
     lines.extend([
         "",
@@ -422,6 +471,49 @@ def write_reports(results):
             lines.append(f"- `{group}`: {data['passed']}/{data['total']} passed, quality {data['quality_score']}")
     else:
         lines.append("- No groups were run.")
+
+    lines.extend([
+        "",
+        "## Production Metrics",
+        "",
+        "| Metric | Average |",
+        "| --- | ---: |",
+    ])
+    metric_values = defaultdict(list)
+    for item in results["cases"]:
+        for metric, score in (item.get("production_metrics") or {}).items():
+            metric_values[metric].append(score)
+    for metric in PRODUCTION_METRICS:
+        lines.append(f"| {metric} | {average(metric_values.get(metric, []))} |")
+
+    lines.extend([
+        "",
+        "## Trace Summary",
+        "",
+    ])
+    intents = Counter(str(item.get("trace_intent") or "") for item in results["cases"])
+    strategies = Counter(str(item.get("retrieval_strategy") or "") for item in results["cases"])
+    lines.append("- Intents: " + (", ".join(f"`{key}`={value}" for key, value in intents.most_common(8)) or "-"))
+    lines.append("- Retrieval strategies: " + (", ".join(f"`{key}`={value}" for key, value in strategies.most_common(8)) or "-"))
+
+    lines.extend([
+        "",
+        "## Good Answer Examples",
+        "",
+    ])
+    for item in [case for case in results["cases"] if case.get("passed")][:2]:
+        lines.extend([f"### {item['id']}", "", "```text", str(item.get("answer") or "")[:1200], "```", ""])
+
+    lines.extend([
+        "",
+        "## Bad Answer Examples",
+        "",
+    ])
+    bad_examples = [case for case in results["cases"] if not case.get("passed")][:2]
+    if not bad_examples:
+        lines.append("- No failed examples in this run.")
+    for item in bad_examples:
+        lines.extend([f"### {item['id']}", "", f"Failures: {', '.join(item.get('failures') or [])}", "", "```text", str(item.get("answer") or "")[:1200], "```", ""])
 
     lines.extend([
         "",
@@ -514,10 +606,12 @@ def main():
                 document_ids=None,
             )
             failures, quality_scores = evaluate_case(case, response)
+            prod_metrics = production_metrics(case, response, failures, quality_scores)
         except Exception as exc:
             response = {"answer": str(exc), "sources": [], "contexts": [], "confidence": 0, "retrieval_strategy": "exception"}
             failures = ["exception"]
             quality_scores = {key: 0.0 for key in DEFAULT_QUALITY_SCORES}
+            prod_metrics = {key: 0.0 for key in PRODUCTION_METRICS}
 
         trace = response.get("processing_trace") or {}
         results["cases"].append({
@@ -527,6 +621,7 @@ def main():
             "passed": not failures,
             "failures": failures,
             "quality_scores": quality_scores,
+            "production_metrics": prod_metrics,
             "answer": response.get("answer", ""),
             "sources": response.get("sources", []),
             "contexts": response.get("contexts", []),
@@ -544,6 +639,7 @@ def main():
 
     results["group_summary"] = summarize_groups(results["cases"])
     results["quality_score"] = overall_quality(results["cases"])
+    results["production_score"] = overall_production_score(results["cases"])
     json_path, md_path = write_reports(results)
     passed = sum(1 for item in results["cases"] if item["passed"])
     print(f"Benchmark complete: {passed}/{len(results['cases'])} passed", flush=True)

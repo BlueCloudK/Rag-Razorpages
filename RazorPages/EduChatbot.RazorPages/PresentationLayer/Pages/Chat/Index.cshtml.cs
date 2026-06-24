@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using ServiceLayer.Models;
 using ServiceLayer.Services;
+using System.Text.Json;
 
 namespace EduChatbot.RazorPages.Pages.Chat;
 
@@ -52,18 +53,26 @@ public class IndexModel : PageModel
         {
             using var client = _httpClientFactory.CreateClient("AiService");
             using var response = await client.GetAsync("/");
+            if (!response.IsSuccessStatusCode)
+            {
+                return new JsonResult(new
+                {
+                    ready = false,
+                    status = "starting",
+                    message = $"AI Engine is still starting. HTTP {(int)response.StatusCode}"
+                });
+            }
+
             return new JsonResult(new
             {
-                ready = response.IsSuccessStatusCode,
-                status = response.IsSuccessStatusCode ? "ready" : "error",
-                message = response.IsSuccessStatusCode ? "AI Engine san sang" : $"AI Engine HTTP {(int)response.StatusCode}"
-            })
-            { StatusCode = response.IsSuccessStatusCode ? 200 : StatusCodes.Status503ServiceUnavailable };
+                ready = true,
+                status = "ready",
+                message = "AI Engine is ready"
+            });
         }
         catch (Exception ex)
         {
-            return new JsonResult(new { ready = false, status = "starting", message = "AI Engine chua san sang: " + ex.Message })
-            { StatusCode = StatusCodes.Status503ServiceUnavailable };
+            return new JsonResult(new { ready = false, status = "starting", message = "AI Engine is still starting: " + ex.Message });
         }
     }
 
@@ -76,6 +85,62 @@ public class IndexModel : PageModel
         return new JsonResult(inspector);
     }
 
+    public async Task<IActionResult> OnGetIndexProgressAsync(int documentId)
+    {
+        var document = await _documentService.GetByIdAsync(documentId);
+        if (document == null)
+            return NotFound(new { message = "Document is not available." });
+
+        if (document.IsIndexed)
+        {
+            return new JsonResult(new
+            {
+                documentId,
+                stage = "indexed",
+                active = false,
+                percent = 100,
+                completed = document.ChunkCount,
+                total = document.ChunkCount,
+                message = $"Indexed {document.ChunkCount} chunks."
+            });
+        }
+
+        try
+        {
+            using var client = _httpClientFactory.CreateClient("AiService");
+            using var response = await client.GetAsync($"/api/documents/{documentId}/index-progress");
+            var json = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException("AI progress endpoint did not return success.");
+
+            using var progress = JsonDocument.Parse(json);
+            var root = progress.RootElement;
+            return new JsonResult(new
+            {
+                documentId,
+                stage = root.TryGetProperty("stage", out var stage) ? stage.GetString() : document.IndexStatus,
+                active = root.TryGetProperty("active", out var active) && active.GetBoolean(),
+                percent = root.TryGetProperty("percent", out var percent) && percent.TryGetInt32(out var pct) ? pct : 0,
+                completed = root.TryGetProperty("completed", out var completed) && completed.TryGetInt32(out var done) ? done : 0,
+                total = root.TryGetProperty("total", out var total) && total.TryGetInt32(out var count) ? count : 0,
+                message = root.TryGetProperty("message", out var message) ? message.GetString() : document.IndexMessage
+            });
+        }
+        catch
+        {
+            return new JsonResult(new
+            {
+                documentId,
+                stage = document.IndexStatus,
+                active = document.IndexStatus != "Failed",
+                percent = 0,
+                completed = 0,
+                total = 0,
+                message = document.IndexMessage ?? "Document is still queued for indexing."
+            });
+        }
+    }
+
     public async Task<IActionResult> OnPostSendMessageAsync(int subjectId, string content, int? sessionId, CancellationToken cancellationToken)
     {
         var result = await _chatService.SendMessageAsync(subjectId, content, sessionId, cancellationToken);
@@ -83,6 +148,44 @@ public class IndexModel : PageModel
             return new JsonResult(new { success = false, message = result.Message }) { StatusCode = result.StatusCode };
 
         return new JsonResult(new
+        {
+            success = true,
+            sessionId = result.SessionId,
+            user = new { id = result.User?.Id, content = result.User?.Content },
+            bot = new { id = result.Bot?.Id, content = result.Bot?.Content, sourceDocuments = result.Bot?.SourceDocuments },
+            trace = result.Trace
+        });
+    }
+
+    public async Task OnPostSendMessageStreamAsync(int subjectId, string content, int? sessionId, CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-cache";
+        Response.Headers.Connection = "keep-alive";
+        Response.ContentType = "text/event-stream; charset=utf-8";
+
+        async Task WriteEventAsync(string eventName, object payload)
+        {
+            await Response.WriteAsync($"event: {eventName}\n", cancellationToken);
+            await Response.WriteAsync("data: ", cancellationToken);
+            await JsonSerializer.SerializeAsync(Response.Body, payload, cancellationToken: cancellationToken);
+            await Response.WriteAsync("\n\n", cancellationToken);
+            await Response.Body.FlushAsync(cancellationToken);
+        }
+
+        var result = await _chatService.SendMessageStreamAsync(
+            subjectId,
+            content,
+            sessionId,
+            async (eventName, payload) => await WriteEventAsync(eventName, payload),
+            cancellationToken);
+
+        if (!result.Success)
+        {
+            await WriteEventAsync("error", new { success = false, message = result.Message, statusCode = result.StatusCode });
+            return;
+        }
+
+        await WriteEventAsync("final", new
         {
             success = true,
             sessionId = result.SessionId,

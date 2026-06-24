@@ -58,6 +58,7 @@ def is_clear_out_of_scope_query(normalized):
         "viet code", "lap trinh giup", "fix code", "debug code",
         "chien tranh", "lich su the gioi", "bong da", "the thao",
         "nau an", "cong thuc nau", "du lich", "dat ve",
+        "kubernetes",
     ]
     return any(term in normalized for term in out_of_scope_terms)
 

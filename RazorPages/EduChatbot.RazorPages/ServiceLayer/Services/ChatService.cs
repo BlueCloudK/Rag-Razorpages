@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -168,6 +169,10 @@ namespace ServiceLayer.Services
                 session = await CreateSessionEntityAsync(subjectId, userId);
             }
 
+            var duplicateTurn = TryGetRecentCompletedTurn(session, content);
+            if (duplicateTurn != null)
+                return duplicateTurn;
+
             var indexedDocuments = await _context.Documents
                 .Where(d => d.SubjectId == subjectId && d.IsIndexed)
                 .Select(d => new { d.Id, d.FileName })
@@ -207,6 +212,13 @@ namespace ServiceLayer.Services
             string sourceDocs = "";
             ChatTraceDto trace = new();
 
+            var documentFilters = indexedDocuments
+                .Select(d => d.Id.ToString())
+                .Concat(indexedDocuments.Select(d => d.FileName))
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
             try
             {
                 var payload = new
@@ -214,7 +226,7 @@ namespace ServiceLayer.Services
                     session_id = session.Id,
                     subject_id = subjectId,
                     query = content,
-                    document_ids = indexedDocuments.Select(d => d.Id.ToString()).ToList(),
+                    document_ids = documentFilters,
                     history = recentHistory,
                     subject_memory = subjectMemory
                 };
@@ -256,6 +268,219 @@ namespace ServiceLayer.Services
                     StatusCode = 503,
                     Message = "AI Engine is not ready or returned an error. Wait until AI is ready, then send again."
                 };
+            }
+
+            var botMsg = new ChatMessage
+            {
+                SessionId = session.Id,
+                Role = "Bot",
+                Content = answer,
+                SourceDocuments = sourceDocs,
+                Timestamp = DateTime.UtcNow
+            };
+
+            _context.ChatMessages.Add(userMsg);
+            _context.ChatMessages.Add(botMsg);
+            await _context.SaveChangesAsync(cancellationToken);
+            await _usageService.IncrementQuestionCountAsync();
+            await _auditLogService.RecordAsync("AskQuestion", "ChatSession", session.Id, subjectId, null, "User asked a question in a subject chat.");
+
+            return new ChatSendResult
+            {
+                Success = true,
+                SessionId = session.Id,
+                User = userMsg.ToDto(),
+                Bot = botMsg.ToDto(),
+                Trace = trace
+            };
+        }
+
+        public async Task<ChatSendResult> SendMessageStreamAsync(int subjectId, string content, int? sessionId, Func<string, JsonElement, Task> onTraceEvent, CancellationToken cancellationToken = default)
+        {
+            if (!await _accessControl.CanViewSubjectAsync(subjectId))
+                return new ChatSendResult { Success = false, StatusCode = 403, Message = "You do not have access to this subject." };
+
+            if (!await _subscriptionService.CanAskQuestionAsync())
+                return new ChatSendResult { Success = false, StatusCode = 429, Message = "Your daily question quota has been reached." };
+
+            if (string.IsNullOrWhiteSpace(content))
+                return new ChatSendResult { Success = false, StatusCode = 400, Message = "Please enter a question." };
+
+            var userId = _currentUser.UserId;
+            if (string.IsNullOrEmpty(userId))
+                return new ChatSendResult { Success = false, StatusCode = 401, Message = "Please log in before chatting." };
+
+            var session = await FindSessionAsync(subjectId, userId, sessionId) ?? await CreateSessionEntityAsync(subjectId, userId);
+
+            var duplicateTurn = TryGetRecentCompletedTurn(session, content);
+            if (duplicateTurn != null)
+                return duplicateTurn;
+
+            var indexedDocuments = await _context.Documents
+                .Where(d => d.SubjectId == subjectId && d.IsIndexed)
+                .Select(d => new { d.Id, d.FileName })
+                .ToListAsync(cancellationToken);
+
+            var processingDocuments = await _context.Documents.CountAsync(d =>
+                d.SubjectId == subjectId &&
+                !d.IsIndexed &&
+                d.IndexStatus != "Failed",
+                cancellationToken);
+
+            if (!indexedDocuments.Any())
+            {
+                var waitMessage = processingDocuments > 0
+                    ? $"Documents are still being indexed ({processingDocuments} file(s) processing). Wait until indexing completes before chatting."
+                    : "This subject has no indexed documents yet. Upload documents and wait for indexing to complete.";
+
+                return new ChatSendResult { Success = false, StatusCode = 409, Message = waitMessage };
+            }
+
+            var recentHistory = (session.Messages ?? Enumerable.Empty<ChatMessage>())
+                .OrderBy(m => m.Timestamp)
+                .TakeLast(6)
+                .Select(m => new { role = m.Role, content = m.Content })
+                .ToList();
+            var subjectMemory = await BuildSubjectMemoryAsync(subjectId, userId, session.Id);
+
+            var userMsg = new ChatMessage
+            {
+                SessionId = session.Id,
+                Role = "User",
+                Content = content,
+                SourceDocuments = "",
+                Timestamp = DateTime.UtcNow
+            };
+
+            string finalJson = "";
+
+            var documentFilters = indexedDocuments
+                .Select(d => d.Id.ToString())
+                .Concat(indexedDocuments.Select(d => d.FileName))
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            try
+            {
+                var payload = new
+                {
+                    session_id = session.Id,
+                    subject_id = subjectId,
+                    query = content,
+                    document_ids = documentFilters,
+                    history = recentHistory,
+                    subject_memory = subjectMemory
+                };
+
+                using var request = new HttpRequestMessage(HttpMethod.Post, "/api/chat/ask-stream")
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+                };
+                using var client = _httpClientFactory.CreateClient("AiService");
+                using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                    throw new HttpRequestException($"AI Engine returned HTTP {(int)response.StatusCode}.");
+
+                await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                using var reader = new StreamReader(stream, Encoding.UTF8);
+
+                var eventName = "message";
+                var dataBuilder = new StringBuilder();
+
+                async Task DispatchAsync()
+                {
+                    if (dataBuilder.Length == 0)
+                        return;
+
+                    var data = dataBuilder.ToString();
+                    dataBuilder.Clear();
+                    try
+                    {
+                        using var jsonDoc = JsonDocument.Parse(data);
+                        var payloadElement = jsonDoc.RootElement.Clone();
+                        if (eventName == "final")
+                        {
+                            finalJson = data;
+                        }
+                        else if (eventName == "error")
+                        {
+                            await onTraceEvent("trace", payloadElement);
+                        }
+                        else
+                        {
+                            await onTraceEvent(eventName, payloadElement);
+                        }
+                    }
+                    catch
+                    {
+                        // Streaming trace is best-effort; final response handling still decides success.
+                    }
+                    finally
+                    {
+                        eventName = "message";
+                    }
+                }
+
+                while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+                {
+                    var line = await reader.ReadLineAsync(cancellationToken);
+                    if (line == null)
+                        break;
+
+                    if (line.Length == 0)
+                    {
+                        await DispatchAsync();
+                        continue;
+                    }
+
+                    if (line.StartsWith("event:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        eventName = line["event:".Length..].Trim();
+                    }
+                    else if (line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (dataBuilder.Length > 0)
+                            dataBuilder.AppendLine();
+                        dataBuilder.Append(line["data:".Length..].TrimStart());
+                    }
+                }
+
+                await DispatchAsync();
+            }
+            catch (OperationCanceledException)
+            {
+                return new ChatSendResult { Success = false, StatusCode = 499, Message = "Request stopped." };
+            }
+            catch
+            {
+                return new ChatSendResult
+                {
+                    Success = false,
+                    StatusCode = 503,
+                    Message = "AI Engine is not ready or returned an error. Wait until AI is ready, then send again."
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(finalJson))
+            {
+                return new ChatSendResult { Success = false, StatusCode = 503, Message = "AI Engine did not return a final answer." };
+            }
+
+            string answer;
+            string sourceDocs = "";
+            ChatTraceDto trace;
+            using (var jsonDoc = JsonDocument.Parse(finalJson))
+            {
+                answer = jsonDoc.RootElement.GetProperty("answer").GetString() ?? "Empty response.";
+                trace = ReadTrace(jsonDoc.RootElement);
+                if (jsonDoc.RootElement.TryGetProperty("sources", out var sourcesEl) && sourcesEl.ValueKind == JsonValueKind.Array)
+                {
+                    sourceDocs = string.Join(", ", sourcesEl.EnumerateArray()
+                        .Select(s => s.GetString())
+                        .Where(s => !string.IsNullOrEmpty(s)));
+                }
             }
 
             var botMsg = new ChatMessage
@@ -543,7 +768,7 @@ namespace ServiceLayer.Services
 
         private async Task<ChatSession?> FindSessionAsync(int subjectId, string userId, int? sessionId)
         {
-            if (sessionId.HasValue)
+            if (sessionId.HasValue && sessionId.Value > 0)
             {
                 return await _context.ChatSessions
                     .Include(s => s.Subject)
@@ -587,6 +812,49 @@ namespace ServiceLayer.Services
                 .Include(s => s.Subject)
                 .Include(s => s.Messages)
                 .FirstAsync(s => s.Id == session.Id);
+        }
+
+        private static ChatSendResult? TryGetRecentCompletedTurn(ChatSession session, string content)
+        {
+            var normalizedContent = (content ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(normalizedContent) || session.Messages == null)
+                return null;
+
+            var cutoff = DateTime.UtcNow.AddSeconds(-90);
+            var orderedMessages = session.Messages
+                .OrderBy(m => m.Timestamp)
+                .ToList();
+
+            for (var index = orderedMessages.Count - 1; index >= 0; index--)
+            {
+                var message = orderedMessages[index];
+                if (!string.Equals(message.Role, "User", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (message.Timestamp < cutoff)
+                    break;
+
+                if (!string.Equals((message.Content ?? string.Empty).Trim(), normalizedContent, StringComparison.Ordinal))
+                    continue;
+
+                var bot = orderedMessages
+                    .Skip(index + 1)
+                    .FirstOrDefault(m => string.Equals(m.Role, "Bot", StringComparison.OrdinalIgnoreCase));
+
+                if (bot == null)
+                    return null;
+
+                return new ChatSendResult
+                {
+                    Success = true,
+                    SessionId = session.Id,
+                    User = message.ToDto(),
+                    Bot = bot.ToDto(),
+                    Trace = new ChatTraceDto()
+                };
+            }
+
+            return null;
         }
 
         private async Task<List<ChatSessionSummaryDto>> GetSessionSummariesAsync(int subjectId, string userId, int? activeSessionId)

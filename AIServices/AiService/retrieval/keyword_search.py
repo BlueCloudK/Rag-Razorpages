@@ -17,7 +17,15 @@ def keyword_candidates(query, rows, tokenize, candidate_pool):
     if not query_terms:
         return []
     docs_tokens = [
-        tokenize(f"{row['metadata'].get('document_name', '')} {row['metadata'].get('heading', '')} {row['content']}")
+        tokenize(
+            " ".join([
+                str(row["metadata"].get("document_name", "")),
+                str(row["metadata"].get("heading", "")),
+                str(row["metadata"].get("section_path", "")),
+                str(row["metadata"].get("contextual_text", "")),
+                str(row["content"])
+            ])
+        )
         for row in rows
     ]
     doc_freq = Counter(term for tokens in docs_tokens for term in set(tokens))

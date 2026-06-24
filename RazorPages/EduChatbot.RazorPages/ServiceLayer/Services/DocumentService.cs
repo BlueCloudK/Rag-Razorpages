@@ -25,6 +25,7 @@ namespace ServiceLayer.Services
         private readonly ISubscriptionService _subscriptionService;
         private readonly IAuditLogService _auditLogService;
         private readonly IRealtimeNotificationService _realtime;
+        private readonly IDocumentIndexingQueue _indexingQueue;
 
         public DocumentService(
             ApplicationDbContext context,
@@ -34,7 +35,8 @@ namespace ServiceLayer.Services
             ICurrentUserService currentUser,
             ISubscriptionService subscriptionService,
             IAuditLogService auditLogService,
-            IRealtimeNotificationService realtime)
+            IRealtimeNotificationService realtime,
+            IDocumentIndexingQueue indexingQueue)
         {
             _context = context;
             _environment = environment;
@@ -44,6 +46,7 @@ namespace ServiceLayer.Services
             _subscriptionService = subscriptionService;
             _auditLogService = auditLogService;
             _realtime = realtime;
+            _indexingQueue = indexingQueue;
         }
 
         public async Task<List<DocumentDto>> GetAllAsync()
@@ -206,63 +209,7 @@ namespace ServiceLayer.Services
             await _context.SaveChangesAsync();
             await _auditLogService.RecordAsync("UploadStarted", "Document", document.Id, subjectId, null, $"Uploaded document metadata for {document.FileName}.");
             await _realtime.DocumentChangedAsync("uploaded", subjectId, document.Id, document.FileName);
-
-            try
-            {
-                using var client = _httpClientFactory.CreateClient("AiService");
-                using var content = new MultipartFormDataContent();
-                content.Add(new StringContent(subjectId.ToString()), "subject_id");
-                content.Add(new StringContent(document.Id.ToString()), "document_id");
-                content.Add(new StringContent(document.FileName), "document_name");
-
-                using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read);
-                var fileContent = new StreamContent(fs);
-                fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType);
-                content.Add(fileContent, "file", file.FileName);
-
-                using var response = await client.PostAsync("/api/documents/index", content);
-                if (response.IsSuccessStatusCode)
-                {
-                    var responseStr = await response.Content.ReadAsStringAsync();
-                    using var jsonDoc = JsonDocument.Parse(responseStr);
-
-                    if (jsonDoc.RootElement.TryGetProperty("chunks", out var chunksProp) && chunksProp.TryGetInt32(out var chunks))
-                        document.ChunkCount = chunks;
-
-                    if (jsonDoc.RootElement.TryGetProperty("indexed", out var indexedProp) && indexedProp.GetBoolean())
-                    {
-                        document.IsIndexed = true;
-                        document.IndexStatus = "Indexed";
-                        document.IndexedAt = DateTime.UtcNow;
-                        document.IndexMessage = $"Đã đọc và nhúng {document.ChunkCount} đoạn nội dung.";
-                    }
-                    else
-                    {
-                        document.IsIndexed = false;
-                        document.IndexStatus = "Failed";
-                        document.IndexMessage = jsonDoc.RootElement.TryGetProperty("message", out var messageProp)
-                            ? messageProp.GetString()
-                            : "Python AI Service không index được tài liệu.";
-                    }
-                }
-                else
-                {
-                    document.IsIndexed = false;
-                    document.IndexStatus = "Failed";
-                    document.IndexMessage = $"AI Service trả lỗi HTTP {(int)response.StatusCode}.";
-                }
-            }
-            catch (Exception ex)
-            {
-                document.IsIndexed = false;
-                document.IndexStatus = "Failed";
-                document.IndexMessage = "Không kết nối được AI Service: " + ex.Message;
-            }
-
-            _context.Update(document);
-            await _context.SaveChangesAsync();
-            await _auditLogService.RecordAsync(document.IsIndexed ? "UploadIndexed" : "UploadFailed", "Document", document.Id, subjectId, null, $"{document.FileName}: {document.IndexStatus}.");
-            await _realtime.DocumentChangedAsync(document.IsIndexed ? "indexed" : "failed", subjectId, document.Id, document.FileName);
+            await _indexingQueue.QueueAsync(new DocumentIndexingJob(document.Id));
 
             return new DocumentUploadResult
             {

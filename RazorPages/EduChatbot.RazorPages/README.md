@@ -12,6 +12,16 @@ EduChatbot.RazorPages/
 `-- AiService/            # Python FastAPI RAG service used by the web app
 ```
 
+## Portfolio Focus
+
+This is the main portfolio version for an AI/RAG engineer profile. The web app demonstrates product-facing RAG behavior, while the Python service handles local retrieval, contextual chunking, evidence selection, citation safety, and benchmark evaluation.
+
+The strongest demo surfaces are:
+
+- `/RagLab`: benchmark quality, production metrics, corpus status, and pipeline overview.
+- `/Chat`: AI Circuit trace, source citations, conflict/duplicate behavior, and chunk inspector.
+- `AIServices/AiService/run_demo_benchmark.py`: reproducible RAG evaluation from the command line.
+
 ## Layer Responsibilities
 
 - `DataAccessLayer`: database entities, ASP.NET Core Identity entities, subscription entities, `ApplicationDbContext`, and EF Core migrations.
@@ -44,6 +54,7 @@ Admin creates subjects, manages users, subject memberships, and privacy-safe act
 - Admin Activity at `/Admin/Activity` shows login/register, account changes, subject access, upload/index/delete document events, and chat usage counts.
 - Audit logs do not store question text, AI answers, or document content.
 - Indexed documents in the chat sidebar include an inspector popup showing where metadata is stored in SQL Server and how chunks/vectors are stored in ChromaDB.
+- Admin RAG Lab at `/RagLab` shows the latest benchmark pass rate, production metrics, group scores, indexed demo corpus, good examples, failed cases if any, and re-index/benchmark commands.
 
 ## Run
 
@@ -98,6 +109,10 @@ Vector search + Keyword/BM25 search + Metadata search
 -> local answer model
 ```
 
+The production-demo trace now exposes each major RAG step as structured nodes and evidence records. Evidence records include source, page, chapter, section, vector score, keyword score, metadata boost, final score, whether the chunk was used, the matched child chunk, and the expanded context sent to the model.
+
+During indexing, the AI service also builds a rule-based `contextual_text` for embedding and keyword search. The original chunk remains the only display/citation text. `contextual_text` adds document name, chapter, section, page, heading, and a short metadata note so retrieval can find chunks whose local text depends on surrounding context.
+
 Chunk metadata includes `chapter_number`, `chapter_title`, `section_number`, `section_title`, `page_number`, and `content_zone`. Chapter and outline questions use this metadata first, so the chatbot avoids using table-of-contents, appendix, references, or answer-key chunks as evidence for chapter content.
 
 The AI service also records an adaptive chunking report for every newly indexed document. It compares `structured_heading`, `recursive_document`, and `page_aware`, then stores the selected strategy, score, reason, and tested strategy metrics in ChromaDB metadata. In the document inspector, the `Adaptive chunking decision` panel shows this report so the indexing step is explainable instead of looking like a fixed splitter.
@@ -137,7 +152,15 @@ Run selected cases quickly:
 python .\run_demo_benchmark.py --subject-id 1007 --ids ambiguous_wc_vi,conflict_gomaa_ch2_vi,duplicate_gomaa_ch2_same_content_vi
 ```
 
-Benchmark cases are in `AIServices/AiService/data/demo_benchmark_cases.json`; runtime reports are written to `AIServices/AiService/data/benchmark_results/` and ignored by Git. The benchmark set currently contains `59` cases. Earlier full verification passed the original `50/50` demo set; newer targeted checks passed `7/7` for small-talk/non-document gating and `2/2` for UML follow-up scope. The cases include conflict handling, duplicate content grouping, same-name duplicate import handling, ambiguous acronym guards, prompt-injection refusal, wrong-source guards, non-document intent gating, scoped follow-ups, and out-of-scope refusal.
+Run grouped checks while developing:
+
+```powershell
+python .\run_demo_benchmark.py --subject-id 1007 --group safety,weird_input,ambiguous
+python .\run_demo_benchmark.py --subject-id 1007 --group chapter,summary,section,followup
+python .\run_demo_benchmark.py --subject-id 1007 --group conflict,duplicate,multidoc,wrong_source
+```
+
+Benchmark cases are in `AIServices/AiService/data/demo_benchmark_cases.json`; runtime reports are written to `AIServices/AiService/data/benchmark_results/` and ignored by Git. Reports include pass/fail plus production-style metrics: retrieval hit, source correctness, citation precision, answer coverage, hallucination guard, conflict handling, duplicate handling, and language quality. The cases include conflict handling, duplicate content grouping, same-name duplicate import handling, ambiguous acronym guards, prompt-injection refusal, wrong-source guards, non-document intent gating, scoped follow-ups, and out-of-scope refusal.
 
 ## AI Circuit Live
 
@@ -148,7 +171,7 @@ Gate and query
 Question -> Scope/intent -> Rewrite/history
 
 Parallel retrieval
-Vector + Keyword/BM25 + Metadata -> RRF/scoring
+Decompose when needed -> Vector + Keyword/BM25 + Metadata -> RRF/scoring
 
 Evidence and answer
 Context chunks -> Local model -> Citations
@@ -157,7 +180,7 @@ Context chunks -> Local model -> Citations
 The compact panel shows status, intent, retrieval rounds, evidence count, and source count. The `Details` modal expands it into a clearer technical map:
 
 - indexing reference: upload, extract, chunk, embed, store in SQL/ChromaDB;
-- runtime trace: scope decision, rewritten query, retrieval branches, branch timings, candidate counts, selected chunks, model, confidence, fallback, and citations;
+- runtime trace: scope decision, rewritten query, query decomposition for compare/multi-doc questions, retrieval branches, branch timings, candidate counts, selected chunks, model, confidence, fallback, and citations;
 - blocked/skipped path for greetings, random input, prompt injection, and weak evidence.
 
 The trace is operational metadata only. It does not expose hidden prompts or chain-of-thought.
@@ -168,6 +191,8 @@ The trace is operational metadata only. It does not expose hidden prompts or cha
 | --- | --- |
 | Chapter and outline questions | Uses chapter-aware metadata before normal retrieval. |
 | Follow-up questions | Rewrites short follow-ups using history and small planner/rule fallback, while preserving previous document/topic scope. |
+| Query decomposition | Splits compare and multi-document questions into focused subqueries, then merges selected evidence before answer generation. |
+| Pros/cons and process decomposition | Splits advantage/limitation and workflow questions into focused retrieval subqueries before synthesis. |
 | Citation | Returns source files plus chunk metadata for UI source grouping. |
 | Conflict awareness | Shows original/modified answers separately and warns about conflict. |
 | Duplicate awareness | Uses `content_hash` to send one representative chunk to the LLM while listing all duplicate sources. |
@@ -175,6 +200,18 @@ The trace is operational metadata only. It does not expose hidden prompts or cha
 | Safety guards | Blocks or clarifies prompt injection, vague acronyms, random input, and out-of-scope questions without fake citations. |
 | Non-document intent gate | Skips retrieval for questions that are not about learning material, so random chat does not produce fake document citations. |
 | AI trace visibility | Shows retrieval branches, rerank/context selection, answer model, confidence, and citations in the chat UI. |
+| Citation verification | The trace marks which source labels are backed by selected evidence and hides citations when evidence is missing. |
+
+## Optional Reranker
+
+The service keeps the heavy reranker disabled by default for the demo machine:
+
+```json
+"RagEnableReranker": "false",
+"RerankerModel": "Qwen/Qwen3-Reranker-0.6B"
+```
+
+If you enable it, the reranker runs on CPU so it does not compete with Ollama for 4GB VRAM. Use it for slower quality experiments, not for the default classroom demo.
 
 ## Information Quality Evaluation
 

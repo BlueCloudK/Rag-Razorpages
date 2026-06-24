@@ -1,0 +1,226 @@
+@page
+@model PresentationLayer.Pages.RagLabModel
+@{
+    ViewData["Title"] = "RAG Lab";
+    var passRate = Model.Data.TotalCases == 0 ? 0 : Math.Round((double)Model.Data.PassedCases / Model.Data.TotalCases * 100, 1);
+}
+
+<section class="raglab-page">
+    <div class="raglab-hero">
+        <div>
+            <p class="eyebrow">AI/RAG portfolio lab</p>
+            <h1>RAG Lab</h1>
+            <p>Explainable local RAG observability for contextual chunking, hybrid retrieval, evidence scoring, benchmark quality, and citation safety.</p>
+        </div>
+        <div class="raglab-status @(Model.Data.HasReport ? "ok" : "warn")">
+            <span>@(Model.Data.HasReport ? "Latest report loaded" : "No benchmark report")</span>
+            <strong>@(Model.Data.HasReport ? $"{Model.Data.PassedCases}/{Model.Data.TotalCases} passed" : "Run benchmark")</strong>
+        </div>
+    </div>
+
+    <div class="raglab-grid metrics">
+        <article class="raglab-card">
+            <span>Pass rate</span>
+            <strong>@passRate%</strong>
+            <small>@Model.Data.PassedCases of @Model.Data.TotalCases benchmark cases</small>
+        </article>
+        <article class="raglab-card">
+            <span>Production score</span>
+            <strong>@Model.Data.ProductionScore.ToString("0.###")</strong>
+            <small>Trace and evidence-aware scoring</small>
+        </article>
+        <article class="raglab-card">
+            <span>Documents</span>
+            <strong>@Model.Data.DocumentCount</strong>
+            <small>@Model.Data.ChunkCount indexed chunks in report</small>
+        </article>
+        <article class="raglab-card">
+            <span>Models</span>
+            <strong>@Model.Data.AnswerModel</strong>
+            <small>@Model.Data.EmbeddingModel</small>
+        </article>
+    </div>
+
+    <div class="raglab-two">
+        <section class="raglab-panel">
+            <div class="raglab-panel-head">
+                <div>
+                    <h2>Production RAG pipeline</h2>
+                    <p>What the system does before an answer reaches the user.</p>
+                </div>
+                <span class="raglab-pill">local only</span>
+            </div>
+            <div class="raglab-pipeline">
+                @for (var index = 0; index < Model.Data.PipelineSteps.Count; index++)
+                {
+                    <div class="raglab-step">
+                        <span>@(index + 1)</span>
+                        <p>@Model.Data.PipelineSteps[index]</p>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <section class="raglab-panel">
+            <div class="raglab-panel-head">
+                <div>
+                    <h2>Latest benchmark run</h2>
+                    <p>Reports are runtime files and intentionally ignored by Git.</p>
+                </div>
+                <span class="raglab-pill">@Model.Data.ReportGeneratedAt?.ToString("dd/MM HH:mm")</span>
+            </div>
+            @if (Model.Data.HasReport)
+            {
+                <dl class="raglab-kv">
+                    <div><dt>Subject</dt><dd>@Model.Data.SubjectId</dd></div>
+                    <div><dt>Quality score</dt><dd>@Model.Data.QualityScore.ToString("0.###")</dd></div>
+                    <div><dt>Collection</dt><dd>@Model.Data.ChromaCollection</dd></div>
+                    <div><dt>Report</dt><dd title="@Model.Data.ReportPath">@System.IO.Path.GetFileName(Model.Data.ReportPath)</dd></div>
+                </dl>
+            }
+            else
+            {
+                <div class="raglab-empty">Run the demo benchmark once to populate this dashboard.</div>
+            }
+        </section>
+    </div>
+
+    <section class="raglab-panel">
+        <div class="raglab-panel-head">
+            <div>
+                <h2>Evaluation metrics</h2>
+                <p>These are computed from benchmark cases and their trace/evidence records.</p>
+            </div>
+        </div>
+        <div class="raglab-metric-list">
+            @foreach (var metric in Model.Data.Metrics)
+            {
+                var width = Math.Clamp(metric.Score * 100, 0, 100);
+                <div class="raglab-metric-row">
+                    <div>
+                        <strong>@metric.Name</strong>
+                        <span>@metric.Description</span>
+                    </div>
+                    <div class="raglab-meter" aria-label="@metric.Name score">
+                        <i style="width:@width%"></i>
+                    </div>
+                    <b>@metric.Score.ToString("0.###")</b>
+                </div>
+            }
+        </div>
+    </section>
+
+    <div class="raglab-two wide-left">
+        <section class="raglab-panel">
+            <div class="raglab-panel-head">
+                <div>
+                    <h2>Score by benchmark group</h2>
+                    <p>Shows where the RAG system is strong or needs more test coverage.</p>
+                </div>
+            </div>
+            <div class="raglab-table-wrap">
+                <table class="raglab-table">
+                    <thead>
+                        <tr>
+                            <th>Group</th>
+                            <th>Pass</th>
+                            <th>Quality</th>
+                            <th>Production</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var group in Model.Data.Groups)
+                        {
+                            <tr>
+                                <td>@group.Name</td>
+                                <td>@group.Passed/@group.Total</td>
+                                <td>@group.QualityScore.ToString("0.###")</td>
+                                <td>@group.ProductionScore.ToString("0.###")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="raglab-panel">
+            <div class="raglab-panel-head">
+                <div>
+                    <h2>Indexed demo corpus</h2>
+                    <p>The current benchmark corpus includes normal, duplicate, and conflicting sources.</p>
+                </div>
+            </div>
+            <div class="raglab-docs">
+                @foreach (var doc in Model.Data.Documents)
+                {
+                    <div>
+                        <strong>@doc.Name</strong>
+                        <span>@doc.Chunks chunks</span>
+                    </div>
+                }
+            </div>
+        </section>
+    </div>
+
+    <div class="raglab-two">
+        <section class="raglab-panel">
+            <div class="raglab-panel-head">
+                <div>
+                    <h2>Good answer examples</h2>
+                    <p>Grounded cases with selected evidence or metadata-backed answers.</p>
+                </div>
+            </div>
+            <div class="raglab-cases">
+                @foreach (var item in Model.Data.GoodExamples)
+                {
+                    <article>
+                        <span>@item.Group</span>
+                        <strong>@item.Question</strong>
+                        <p>@item.Answer</p>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <section class="raglab-panel">
+            <div class="raglab-panel-head">
+                <div>
+                    <h2>Failed cases</h2>
+                    <p>Empty is good. If failures appear, use the case id with the CLI runner.</p>
+                </div>
+            </div>
+            @if (Model.Data.FailedCases.Any())
+            {
+                <div class="raglab-cases">
+                    @foreach (var item in Model.Data.FailedCases)
+                    {
+                        <article class="failed">
+                            <span>@item.Group</span>
+                            <strong>@item.Question</strong>
+                            <p>@string.Join(", ", item.Failures)</p>
+                        </article>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="raglab-empty success">No failed cases in the latest report.</div>
+            }
+        </section>
+    </div>
+
+    <section class="raglab-panel">
+        <div class="raglab-panel-head">
+            <div>
+                <h2>Demo commands</h2>
+                <p>Run these locally before a portfolio demo or interview walkthrough.</p>
+            </div>
+        </div>
+        <div class="raglab-commands">
+            @foreach (var command in Model.Data.DemoCommands)
+            {
+                <code>@command</code>
+            }
+        </div>
+    </section>
+</section>
