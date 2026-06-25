@@ -327,6 +327,8 @@
     (function () {
         if (!window.signalR) return;
 
+        const currentUserId = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.CurrentUserId));
+        const currentUserIsAdmin = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.IsAdmin));
         const toast = document.getElementById('realtimeToast');
         const toastText = document.getElementById('realtimeToastText');
         let toastTimer = null;
@@ -370,8 +372,25 @@
             scheduleRefresh(`${name} ${event?.action || 'changed'}. Updating counts...`);
         });
 
-        connection.on('MembershipChanged', () => {
-            scheduleRefresh('Subject membership changed. Updating access...');
+        connection.on('MembershipChanged', event => {
+            const affectedUserId = String(event?.userId || '');
+            const action = String(event?.action || '');
+            const subjectId = event?.subjectId;
+
+            if (affectedUserId && affectedUserId !== currentUserId && !currentUserIsAdmin) {
+                return;
+            }
+
+            if (action === 'removed' && subjectId) {
+                document.querySelector(`[data-subject-card="${subjectId}"]`)?.remove();
+            }
+
+            const message = action === 'added'
+                ? 'You were added to a subject. Updating workspace...'
+                : action === 'removed'
+                    ? 'Your subject access changed. Updating workspace...'
+                    : 'Subject membership changed. Updating access...';
+            scheduleRefresh(message);
         });
 
         connection.on('AdminChanged', () => {

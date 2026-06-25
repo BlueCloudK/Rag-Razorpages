@@ -32,6 +32,7 @@ public class IndexModel : PageModel
     public SubscriptionStatusDto? Subscription => Dashboard.Subscription;
     public string DisplayName { get; private set; } = "User";
     public string Email { get; private set; } = string.Empty;
+    public string CurrentUserId { get; private set; } = string.Empty;
     public string PrimaryRole { get; private set; } = "User";
     public bool IsAdmin { get; private set; }
     public bool IsLecturer { get; private set; }
@@ -47,13 +48,13 @@ public class IndexModel : PageModel
         IsAdmin = await _currentUser.IsInRoleAsync(AuthConstants.Admin);
         IsLecturer = await _currentUser.IsInRoleAsync(AuthConstants.Lecturer);
         IsStudent = await _currentUser.IsInRoleAsync(AuthConstants.Student);
+        CurrentUserId = _currentUser.UserId ?? string.Empty;
         DisplayName = string.IsNullOrWhiteSpace(user?.FullName) ? user?.Email ?? "User" : user.FullName;
         Email = user?.Email ?? string.Empty;
         PrimaryRole = IsAdmin ? AuthConstants.Admin : IsLecturer ? AuthConstants.Lecturer : IsStudent ? AuthConstants.Student : "User";
 
         Dashboard = await _organizationService.GetDashboardAsync();
-        var fallbackSubjects = await _subjectService.GetAllAsync(includeDocuments: true);
-        Subjects = Dashboard.Subjects.Any() ? Dashboard.Subjects : fallbackSubjects;
+        Subjects = Dashboard.Subjects;
         SubjectUsage = (await _auditLogService.GetSubjectUsageAsync()).ToDictionary(s => s.SubjectId);
     }
 

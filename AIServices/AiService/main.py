@@ -14,6 +14,7 @@ import time
 import json
 import queue
 import threading
+import asyncio
 from uuid import uuid4
 from services.rag_service import RagService
 from services.document_processor import DocumentProcessor
@@ -352,6 +353,25 @@ async def index_existing_document(
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
+        return await asyncio.to_thread(
+            index_existing_document_from_path,
+            subject_id,
+            document_id,
+            document_name,
+            temp_file_path
+        )
+    except Exception as e:
+        print(f"[INDEX ERROR] {document_name}: {e}")
+        traceback.print_exc()
+        set_index_progress(document_id, subject_id, document_name, "failed", 0, 0, str(e))
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+        return {"status": "error", "message": str(e), "indexed": False}
+
+
+def index_existing_document_from_path(subject_id: int, document_id: str, document_name: str, temp_file_path: str):
+    """Run the blocking extract/embed/store pipeline outside FastAPI's event loop."""
+    try:
         start = time.time()
         file_size = os.path.getsize(temp_file_path) if os.path.exists(temp_file_path) else 0
         log_event(

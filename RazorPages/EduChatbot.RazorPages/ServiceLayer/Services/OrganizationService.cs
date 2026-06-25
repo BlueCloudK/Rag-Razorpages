@@ -80,14 +80,17 @@ namespace ServiceLayer.Services
             var org = await GetCurrentOrganizationAsync();
             var canManage = await CanManageCurrentOrganizationAsync();
             var isAdmin = await _accessControl.IsAdminAsync();
-            var subjects = await BuildSubjectQuery(org?.Id)
+            var visibleSubjectsQuery = BuildVisibleSubjectQuery(org?.Id, isAdmin, _currentUser.UserId);
+            var visibleSubjectIdsQuery = visibleSubjectsQuery.Select(s => s.Id);
+
+            var subjects = await visibleSubjectsQuery
                 .Include(s => s.Documents)
                 .OrderBy(s => s.Name)
                 .ToListAsync();
 
             var documents = await _context.Documents
                 .Include(d => d.Subject)
-                .Where(d => org == null || d.Subject!.OrganizationId == org.Id)
+                .Where(d => visibleSubjectIdsQuery.Contains(d.SubjectId))
                 .OrderByDescending(d => d.UploadedAt)
                 .Take(6)
                 .ToListAsync();
@@ -100,7 +103,7 @@ namespace ServiceLayer.Services
                 RecentDocuments = documents.Select(d => d.ToDto()).ToList(),
                 MemberCount = org == null ? 0 : await _context.OrganizationMembers.CountAsync(m => m.OrganizationId == org.Id),
                 IndexedDocumentCount = documents.Count(d => d.IsIndexed),
-                ProcessingDocumentCount = await _context.Documents.CountAsync(d => (org == null || d.Subject!.OrganizationId == org.Id) && !d.IsIndexed && d.IndexStatus != "Failed"),
+                ProcessingDocumentCount = await _context.Documents.CountAsync(d => visibleSubjectIdsQuery.Contains(d.SubjectId) && !d.IsIndexed && d.IndexStatus != "Failed"),
                 CanManageOrganization = canManage,
                 CanCreateSubject = isAdmin && await _subscriptionService.CanCreateSubjectAsync()
             };
@@ -133,6 +136,21 @@ namespace ServiceLayer.Services
             if (organizationId.HasValue)
                 query = query.Where(s => s.OrganizationId == organizationId.Value);
             return query;
+        }
+
+        private IQueryable<DataAccessLayer.Models.Subject> BuildVisibleSubjectQuery(int? organizationId, bool isAdmin, string? userId)
+        {
+            var query = BuildSubjectQuery(organizationId);
+
+            if (isAdmin)
+                return query;
+
+            if (string.IsNullOrEmpty(userId))
+                return query.Where(_ => false);
+
+            return query.Where(s => _context.SubjectMemberships.Any(m =>
+                m.SubjectId == s.Id &&
+                m.UserId == userId));
         }
     }
 }

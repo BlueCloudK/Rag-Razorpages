@@ -13,6 +13,7 @@
     var activeSessionId = Model.ActiveSessionId != 0 ? Model.ActiveSessionId : Model.CurrentSession?.Id ?? 0;
     var activeTab = Model.ActiveTab;
     var currentUserIsAdmin = User.IsInRole(ServiceLayer.Services.AuthConstants.Admin);
+    var currentUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
     var lecturerRole = ServiceLayer.Services.AuthConstants.Lecturer;
     var studentRole = ServiceLayer.Services.AuthConstants.Student;
     var subjectLeadRole = ServiceLayer.Services.AuthConstants.SubjectLead;
@@ -890,6 +891,8 @@
     let latestCircuitSources = '';
     let latestCircuitQuestion = '';
     const currentSubjectId = @subjectId;
+    const currentUserId = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(currentUserId));
+    const currentUserCanManageSubject = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.CanManageSubject || currentUserIsAdmin));
     const aiStatusMaxVisibleRetries = 90;
     let realtimeRefreshTimer = null;
     let realtimeToastTimer = null;
@@ -997,6 +1000,21 @@
 
         connection.on('MembershipChanged', event => {
             if (Number(event?.subjectId || 0) !== currentSubjectId) return;
+
+            const affectedUserId = String(event?.userId || '');
+            const action = String(event?.action || '');
+            const affectsCurrentUser = affectedUserId && affectedUserId === currentUserId;
+
+            if (affectsCurrentUser && action === 'removed') {
+                showRealtimeToast('Your access to this subject was removed. Returning to dashboard...');
+                window.setTimeout(() => { window.location.href = '/'; }, 850);
+                return;
+            }
+
+            if (!affectsCurrentUser && !currentUserCanManageSubject) {
+                return;
+            }
+
             scheduleWorkspaceRefresh('Subject membership changed. Updating access...');
         });
 
@@ -1177,9 +1195,9 @@
                     const progress = await response.json().catch(() => ({}));
                     updateIndexCardProgress(documentId, progress);
                     const stage = String(progress.stage || '').toLowerCase();
-                    const terminal = stage === 'indexed' || stage === 'failed' || Number(progress.percent || 0) >= 100;
+                    const terminal = stage === 'indexed' || stage === 'failed';
                     stillActive = stillActive || !terminal;
-                    if (stage === 'indexed' || Number(progress.percent || 0) >= 100) {
+                    if (stage === 'indexed') {
                         scheduleWorkspaceRefresh('Document indexing completed. Refreshing workspace...');
                     } else if (stage === 'failed') {
                         scheduleWorkspaceRefresh('Document indexing failed. Refreshing workspace...');
